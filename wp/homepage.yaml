@@ -1,0 +1,119 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  ECConnectInstanceIP:
+    Description: EC2 Connect Instance service IP in region
+    Type: String
+  IWHostedZoneId:
+    Description: A domain name for subdomain records initialization
+    Type: String
+  IWHomepageDomain:
+    Description: A domain name
+    Type: String
+  IWAMIPrivateKeyName:
+    Description: Private Key Name
+    Type: String
+  IWAMIID:
+    Description: AMI ID
+    Type: String
+  IWVPCID:
+    Description: VPC ID
+    Type: String
+Resources:
+
+  #
+  # Security Groups
+  #
+  IWWebSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      VpcId:
+        Ref: IWVPCID
+      GroupName: !Sub "${AWS::StackName}-${AWS::Region}a-web.sg"
+      GroupDescription: HTTP & HTTPS access
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          FromPort: 80
+          IpProtocol: tcp
+          ToPort: 80
+          Description: HTTP
+        - CidrIp: 0.0.0.0/0
+          FromPort: 443
+          IpProtocol: tcp
+          ToPort: 443
+          Description: HTTPS
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-${AWS::Region}a-web.sg"
+
+  IWShellSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      VpcId:
+        Ref: IWVPCID
+      GroupName: !Sub "${AWS::StackName}-${AWS::Region}a-ssh.sg"
+      GroupDescription: SSH access
+      SecurityGroupIngress:
+        - CidrIp: !Ref ECConnectInstanceIP
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22
+          Description: SSH
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-${AWS::Region}a-ssh.sg"
+
+  #
+  # Instance
+  #
+  IWHomepageInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref IWAMIID
+      InstanceType: t3.micro
+      KeyName: 
+        Ref: IWAMIPrivateKeyName
+      SecurityGroupIds: 
+        - !GetAtt IWWebSecurityGroup.GroupId
+        - !GetAtt IWShellSecurityGroup.GroupId
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-${AWS::Region}a-wp-site"
+      UserData:
+        Fn::Base64: |
+          #!/bin/bash -xe
+          #
+          # Packages
+          #
+          sudo apt update
+          sudo apt upgrade -y
+          apt install -y htop s3cmd git
+          # sudo apt-get install ec2-instance-connect
+          wp plugin update --all
+
+  #
+  # Elastic IP addresses
+  #
+  IWHomepageElasticIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      InstanceId: !Ref IWHomepageInstance
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-${AWS::Region}a-eip"
+
+  #
+  # Domain name
+  #
+  IWHomepageDomainRoute:
+    Type: 'AWS::Route53::RecordSetGroup'
+    DependsOn:
+         - IWHomepageElasticIP
+    Properties:
+      # HostedZoneName: !Ref CompanyHostedZoneName
+      HostedZoneId: !Ref IWHostedZoneId
+      RecordSets:
+        - Name: !Ref IWHomepageDomain
+          Type: A
+          TTL: '900'
+          ResourceRecords:
+            - !GetAtt IWHomepageInstance.PublicIp
