@@ -238,6 +238,8 @@ Resources:
   #
   IWLoadBalancerInstance:
     Type: AWS::EC2::Instance
+    UpdateReplacePolicy: Retain
+    DeletionPolicy: Delete
     Properties:
       ImageId: !Ref IWAMIID
       InstanceType: t3.micro
