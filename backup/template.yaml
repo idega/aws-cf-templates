@@ -1,0 +1,43 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  ServerName:
+    Description: A domain name
+    Type: String
+  IWPrivateLinkID:
+    Description: AWS Private Link for Backup
+    Type: String
+Resources:
+  IWBackupVault:
+    Type: AWS::Backup::BackupVault
+    Properties:
+      BackupVaultName: !Sub "${AWS::StackName}-${AWS::Region}-${ServerName}a-backup-vault"
+    UpdateReplacePolicy: Retain
+    DeletionPolicy: Delete
+  IWBackupPlan:
+    Type: AWS::Backup::BackupPlan
+    Properties:
+      BackupPlan:
+        AdvancedBackupSettings:
+          - BackupOptions:
+              WindowsVSS: false
+            ResourceType: EC2
+        BackupPlanName: !Sub "${AWS::StackName}-${AWS::Region}a-${ServerName}-backup-plan"
+        BackupPlanRule:
+          - RuleName: !Sub "${AWS::StackName}-${AWS::Region}a-${ServerName}-backup-plan-rule"
+            TargetBackupVault: !Ref IWBackupVault
+            ScheduleExpression: "cron(0 3 ? * * *)"
+            Lifecycle:
+              DeleteAfterDays: 7
+            StartWindowMinutes: 180
+            CompletionWindowMinutes: 240
+  IWBackupPlanAssignment:
+    Type: AWS::Backup::BackupSelection
+    Properties:
+      BackupPlanId: !Ref IWBackupPlan
+      BackupSelection:
+        SelectionName: !Sub "${AWS::StackName}-${AWS::Region}a-${ServerName}-backup-plan-assingment"
+        IamRoleArn: !Sub arn:aws:iam::${AWS::AccountId}:role/service-role/AWSBackupDefaultServiceRole
+        ListOfTags:
+          - ConditionKey: "iw-backup-enable"
+            ConditionValue: "daily"
+            ConditionType: "STRINGEQUALS"
