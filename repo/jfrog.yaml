@@ -1,0 +1,184 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  IWAMIPrivateKeyName:
+    Description: Private Key Name
+    Type: String
+  IWAMIID:
+    Description: AMI ID
+    Type: String
+  IWVPCCIDR:
+    Description: CIDR block for VPC network
+    Type: String
+  IWVPCId:
+    Description: VPC ID
+    Type: String
+  IWSubnetId:
+    Description: Subnet ID
+    Type: String
+  IWAdminUsername:
+    Type: String
+Resources:
+
+  # s3 repository.idega.com user
+  # s3cmd config
+  # fetch all required packages
+
+  #
+  # Security Groups
+  #
+  IWWebSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      VpcId:
+        Ref: IWVPCId
+      GroupName: !Sub "${AWS::StackName}-${AWS::Region}a-web.sg"
+      GroupDescription: HTTP & HTTPS access
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          FromPort: 80
+          IpProtocol: tcp
+          ToPort: 80
+          Description: HTTP
+        - CidrIp: 0.0.0.0/0
+          FromPort: 443
+          IpProtocol: tcp
+          ToPort: 443
+          Description: HTTPS
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-${AWS::Region}a-web.sg"
+  IWAppSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      VpcId:
+        Ref: IWVPCId
+      GroupName: !Sub "${AWS::StackName}-${AWS::Region}a-app.sg"
+      GroupDescription: Application access in private zone
+      SecurityGroupIngress:
+        - CidrIp: !Ref IWVPCCIDR
+          FromPort: 8080
+          IpProtocol: tcp
+          ToPort: 8081
+          Description: Application access in private zone
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-${AWS::Region}a-app.sg"
+  IWVPNShellSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      VpcId:
+        Ref: IWVPCId
+      GroupName: !Sub "${AWS::StackName}-${AWS::Region}a-ssh-vpn.sg"
+      GroupDescription: SSH access
+      SecurityGroupIngress:
+        - CidrIp: !Ref IWVPCCIDR
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22
+          Description: SSH
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-${AWS::Region}a-ssh-vpn.sg"
+
+  #
+  # Instance
+  #
+  IWMavenRepoInstance:
+    Type: AWS::EC2::Instance
+    UpdateReplacePolicy: Retain
+    DeletionPolicy: Delete
+    Properties:
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            DeleteOnTermination: false
+            VolumeSize: 64
+            VolumeType: gp3
+      ImageId: !Ref IWAMIID
+      InstanceType: t3.small
+      KeyName: 
+        Ref: IWAMIPrivateKeyName
+      PropagateTagsToVolumeOnCreation: true
+      SubnetId: !Ref IWSubnetId
+      SecurityGroupIds: 
+        - !GetAtt IWWebSecurityGroup.GroupId
+        - !GetAtt IWAppSecurityGroup.GroupId
+        - !GetAtt IWVPNShellSecurityGroup.GroupId
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-${AWS::Region}a-instance"
+      UserData:
+        Fn::Base64: 
+          !Sub |
+            #!/bin/bash
+            #
+            # Packages
+            #
+            sudo yum -y install epel-release
+            sudo yum -y install \
+                bc \
+                elinks \
+                firewalld \
+                gettext \
+                git \
+                htop \
+                libX11 \
+                net-tools \
+                openscap openscap-scanner openscap-utils \
+                scap-security-guide \
+                screen \
+                s3cmd \
+                vim \
+                wget \
+                unzip
+
+            #
+            # SELinux
+            #
+            setsebool httpd_can_network_connect on
+            setsebool -P httpd_can_network_connect on
+
+            #
+            # Services
+            #
+            sudo systemctl enable firewalld
+            sudo systemctl restart firewalld
+
+            #
+            # Firewall 
+            #
+            sudo firewall-cmd --set-default-zone=drop
+            sudo firewall-cmd --add-service ssh
+            sudo firewall-cmd --add-service ssh --permanent
+            sudo firewall-cmd --add-service http
+            sudo firewall-cmd --add-service http --permanent
+            sudo firewall-cmd --add-service https
+            sudo firewall-cmd --add-service https --permanent
+            sudo firewall-cmd --add-port 8080-8082/tcp
+            sudo firewall-cmd --add-port 8080-8082/tcp --permanent
+
+            #
+            # PCI-DSS benchmark
+            #
+            # sudo oscap xccdf eval \
+            #   --fetch-remote-resources \
+            #   --remediate \
+            #   --profile xccdf_org.ssgproject.content_profile_pci-dss \
+            #   --results scan-results.xml \
+            #   /usr/share/xml/scap/ssg/content/ssg-almalinux9-ds.xml
+
+            # 
+            # EC2 Instance Connect
+            # Might need no additional access from anywhere else
+            # 
+            wget https://amazon-ec2-instance-connect-us-west-2.s3.us-west-2.amazonaws.com/latest/linux_amd64/ec2-instance-connect.rpm
+            wget https://amazon-ec2-instance-connect-us-west-2.s3.us-west-2.amazonaws.com/latest/linux_amd64/ec2-instance-connect-selinux.noarch.rpm
+            sudo yum install -y ec2-instance-connect.rpm
+            sudo yum install -y ec2-instance-connect-selinux.noarch.rpm
+
+            #
+            # JFrog
+            #
+            sudo rpm -i https://releases.jfrog.io/artifactory/artifactory-rpms/jfrog-artifactory-oss/jfrog-artifactory-oss-[RELEASE].rpm
+            sudo systemctl start artifactory.service
+            sudo systemctl enable artifactory.service
