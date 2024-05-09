@@ -1,0 +1,446 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Resources:
+
+  IWRepoReaderGroup:
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Type: AWS::IAM::Group
+    Properties:
+      GroupName: !Sub "${AWS::StackName}-${AWS::Region}-repo-group"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/AWSCodeArtifactReadOnlyAccess"
+
+  IWRepoAdminGroup:
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Type: AWS::IAM::Group
+    Properties:
+      GroupName: !Sub "${AWS::StackName}-${AWS::Region}-repo-adm-group"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/AWSCodeArtifactAdminAccess"
+
+  #
+  # Public domain for modified packages for Idega solutions
+  #
+  IWPublicThirdPartyDomain:
+    Type: 'AWS::CodeArtifact::Domain'
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties:
+      DomainName: !Sub "${AWS::StackName}-${AWS::Region}-public-3rd-party"
+      PermissionsPolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: 
+              - !Sub arn:aws:iam::${AWS::AccountId}:root
+            Resource: "*"
+            Action:
+              - codeartifact:CreateRepository
+              - codeartifact:DescribeDomain
+              - codeartifact:GetAuthorizationToken
+              - codeartifact:GetDomainPermissionsPolicy
+              - codeartifact:ListRepositoriesInDomain
+              - sts:GetServiceBearerToken
+
+  IWPublicMavenRepository:
+    Type: 'AWS::CodeArtifact::Repository'
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: Repository that contains 3rd party Maven dependencies that are no longer available
+      RepositoryName: !Sub "${AWS::StackName}-${AWS::Region}-public-mvn-3rd-party"
+      DomainName: !GetAtt IWPublicThirdPartyDomain.Name
+      PermissionsPolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Resource: "*"
+            Action:
+              - codeartifact:DescribePackage
+              - codeartifact:DescribePackageGroup
+              - codeartifact:DescribePackageVersion
+              - codeartifact:DescribeRepository
+              - codeartifact:GetPackageVersionAsset
+              - codeartifact:GetPackageVersionReadme
+              - codeartifact:GetRepositoryEndpoint
+              - codeartifact:ListAssociatedPackages
+              - codeartifact:ListPackageGroups
+              - codeartifact:ListPackages
+              - codeartifact:ListPackageVersionAssets
+              - codeartifact:ListPackageVersionDependencies
+              - codeartifact:ListPackageVersions
+              - codeartifact:ListSubPackageGroups
+              - codeartifact:ReadFromRepository
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Resource: "*"
+            Action: 
+              - codeartifact:PublishPackageVersion
+              - codeartifact:PutPackageMetadata
+              - codeartifact:PutPackageOriginConfiguration
+              - codeartifact:UpdatePackageVersionsStatus
+
+  IWPublicNodeRepository:
+    Type: 'AWS::CodeArtifact::Repository'
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: Repository that contains 3rd party Node dependencies that are no longer available
+      RepositoryName: !Sub "${AWS::StackName}-${AWS::Region}-public-js-3rd-party"
+      DomainName: !GetAtt IWPublicThirdPartyDomain.Name
+      PermissionsPolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Resource: "*"
+            Action:
+              - codeartifact:DescribePackage
+              - codeartifact:DescribePackageGroup
+              - codeartifact:DescribePackageVersion
+              - codeartifact:DescribeRepository
+              - codeartifact:GetPackageVersionAsset
+              - codeartifact:GetPackageVersionReadme
+              - codeartifact:GetRepositoryEndpoint
+              - codeartifact:ListAssociatedPackages
+              - codeartifact:ListPackageGroups
+              - codeartifact:ListPackages
+              - codeartifact:ListPackageVersionAssets
+              - codeartifact:ListPackageVersionDependencies
+              - codeartifact:ListPackageVersions
+              - codeartifact:ListSubPackageGroups
+              - codeartifact:ReadFromRepository
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Resource: "*"
+            Action: 
+              - codeartifact:PublishPackageVersion
+              - codeartifact:PutPackageMetadata
+              - codeartifact:PutPackageOriginConfiguration
+              - codeartifact:UpdatePackageVersionsStatus
+  #
+  # Private domain for modified packages for Idega solutions, for example, requirements of private packages
+  #
+  IWPrivatePartyDomain:
+    Type: 'AWS::CodeArtifact::Domain'
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties:
+      DomainName: !Sub "${AWS::StackName}-${AWS::Region}-private-3rd-party"
+      PermissionsPolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: 
+              - !Sub arn:aws:iam::${AWS::AccountId}:root
+            Resource: "*"
+            Action:
+              - codeartifact:CreateRepository
+              - codeartifact:DescribeDomain
+              - codeartifact:GetAuthorizationToken
+              - codeartifact:GetDomainPermissionsPolicy
+              - codeartifact:ListRepositoriesInDomain
+              - sts:GetServiceBearerToken
+
+  IWPrivateMaven3rdPartyRepository:
+    Type: 'AWS::CodeArtifact::Repository'
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: Repository that contains 3rd party Maven dependencies that are not available on public internet, belongs to the clients ant etc.
+      RepositoryName: !Sub "${AWS::StackName}-${AWS::Region}-private-mvn-3rd-party"
+      DomainName: !GetAtt IWPrivatePartyDomain.Name
+      PermissionsPolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Resource: "*"
+            Action:
+              - codeartifact:DescribePackage
+              - codeartifact:DescribePackageGroup
+              - codeartifact:DescribePackageVersion
+              - codeartifact:DescribeRepository
+              - codeartifact:GetPackageVersionAsset
+              - codeartifact:GetPackageVersionReadme
+              - codeartifact:GetRepositoryEndpoint
+              - codeartifact:ListAssociatedPackages
+              - codeartifact:ListPackageGroups
+              - codeartifact:ListPackages
+              - codeartifact:ListPackageVersionAssets
+              - codeartifact:ListPackageVersionDependencies
+              - codeartifact:ListPackageVersions
+              - codeartifact:ListSubPackageGroups
+              - codeartifact:ReadFromRepository
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Resource: "*"
+            Action: 
+              - codeartifact:PublishPackageVersion
+              - codeartifact:PutPackageMetadata
+              - codeartifact:PutPackageOriginConfiguration
+              - codeartifact:UpdatePackageVersionsStatus
+
+  IWPrivateNode3rdPartyRepository:
+    Type: 'AWS::CodeArtifact::Repository'
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: Repository that contains 3rd party Node dependencies that are not available on public internet, belongs to the clients ant etc.
+      RepositoryName: !Sub "${AWS::StackName}-${AWS::Region}-private-js-3rd-party"
+      DomainName: !GetAtt IWPrivatePartyDomain.Name
+      PermissionsPolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Resource: "*"
+            Action:
+              - codeartifact:DescribePackage
+              - codeartifact:DescribePackageGroup
+              - codeartifact:DescribePackageVersion
+              - codeartifact:DescribeRepository
+              - codeartifact:GetPackageVersionAsset
+              - codeartifact:GetPackageVersionReadme
+              - codeartifact:GetRepositoryEndpoint
+              - codeartifact:ListAssociatedPackages
+              - codeartifact:ListPackageGroups
+              - codeartifact:ListPackages
+              - codeartifact:ListPackageVersionAssets
+              - codeartifact:ListPackageVersionDependencies
+              - codeartifact:ListPackageVersions
+              - codeartifact:ListSubPackageGroups
+              - codeartifact:ReadFromRepository
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Resource: "*"
+            Action: 
+              - codeartifact:PublishPackageVersion
+              - codeartifact:PutPackageMetadata
+              - codeartifact:PutPackageOriginConfiguration
+              - codeartifact:UpdatePackageVersionsStatus
+  #
+  # Private domain for testing builds
+  #
+  IWTestingDomain:
+    Type: 'AWS::CodeArtifact::Domain'
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties:
+      DomainName: !Sub "${AWS::StackName}-${AWS::Region}-private-test"
+      PermissionsPolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: 
+              - !Sub arn:aws:iam::${AWS::AccountId}:root
+            Resource: "*"
+            Action:
+              - codeartifact:CreateRepository
+              - codeartifact:DescribeDomain
+              - codeartifact:GetAuthorizationToken
+              - codeartifact:GetDomainPermissionsPolicy
+              - codeartifact:ListRepositoriesInDomain
+              - sts:GetServiceBearerToken
+
+  IWPrivateMavenTestingRepository:
+    Type: 'AWS::CodeArtifact::Repository'
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: Repository that contains built Maven packages for deployment on test servers
+      RepositoryName: !Sub "${AWS::StackName}-${AWS::Region}-private-mvn-test"
+      DomainName: !GetAtt IWTestingDomain.Name
+      PermissionsPolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Resource: "*"
+            Action:
+              - codeartifact:DescribePackage
+              - codeartifact:DescribePackageGroup
+              - codeartifact:DescribePackageVersion
+              - codeartifact:DescribeRepository
+              - codeartifact:GetPackageVersionAsset
+              - codeartifact:GetPackageVersionReadme
+              - codeartifact:GetRepositoryEndpoint
+              - codeartifact:ListAssociatedPackages
+              - codeartifact:ListPackageGroups
+              - codeartifact:ListPackages
+              - codeartifact:ListPackageVersionAssets
+              - codeartifact:ListPackageVersionDependencies
+              - codeartifact:ListPackageVersions
+              - codeartifact:ListSubPackageGroups
+              - codeartifact:ReadFromRepository
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Resource: "*"
+            Action: 
+              - codeartifact:PublishPackageVersion
+              - codeartifact:PutPackageMetadata
+              - codeartifact:PutPackageOriginConfiguration
+              - codeartifact:UpdatePackageVersionsStatus
+
+  IWPrivateNodeTestingRepository:
+    Type: 'AWS::CodeArtifact::Repository'
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: Repository that contains built Maven packages for deployment on test servers
+      RepositoryName: !Sub "${AWS::StackName}-${AWS::Region}-private-js-test"
+      DomainName: !GetAtt IWTestingDomain.Name
+      PermissionsPolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Resource: "*"
+            Action:
+              - codeartifact:DescribePackage
+              - codeartifact:DescribePackageGroup
+              - codeartifact:DescribePackageVersion
+              - codeartifact:DescribeRepository
+              - codeartifact:GetPackageVersionAsset
+              - codeartifact:GetPackageVersionReadme
+              - codeartifact:GetRepositoryEndpoint
+              - codeartifact:ListAssociatedPackages
+              - codeartifact:ListPackageGroups
+              - codeartifact:ListPackages
+              - codeartifact:ListPackageVersionAssets
+              - codeartifact:ListPackageVersionDependencies
+              - codeartifact:ListPackageVersions
+              - codeartifact:ListSubPackageGroups
+              - codeartifact:ReadFromRepository
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Resource: "*"
+            Action: 
+              - codeartifact:PublishPackageVersion
+              - codeartifact:PutPackageMetadata
+              - codeartifact:PutPackageOriginConfiguration
+              - codeartifact:UpdatePackageVersionsStatus
+
+  #
+  # Private domain for production builds
+  #
+  IWProductionDomain:
+    Type: 'AWS::CodeArtifact::Domain'
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties:
+      DomainName: !Sub "${AWS::StackName}-${AWS::Region}-private-prod"
+      PermissionsPolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: 
+              - !Sub arn:aws:iam::${AWS::AccountId}:root
+            Resource: "*"
+            Action:
+              - codeartifact:CreateRepository
+              - codeartifact:DescribeDomain
+              - codeartifact:GetAuthorizationToken
+              - codeartifact:GetDomainPermissionsPolicy
+              - codeartifact:ListRepositoriesInDomain
+              - sts:GetServiceBearerToken
+
+  IWPrivateMavenProductionRepository:
+    Type: 'AWS::CodeArtifact::Repository'
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: Repository that contains built Maven packages for deployment on production servers
+      RepositoryName: !Sub "${AWS::StackName}-${AWS::Region}-private-mvn-prod"
+      DomainName: !GetAtt IWProductionDomain.Name
+      PermissionsPolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Resource: "*"
+            Action:
+              - codeartifact:DescribePackage
+              - codeartifact:DescribePackageGroup
+              - codeartifact:DescribePackageVersion
+              - codeartifact:DescribeRepository
+              - codeartifact:GetPackageVersionAsset
+              - codeartifact:GetPackageVersionReadme
+              - codeartifact:GetRepositoryEndpoint
+              - codeartifact:ListAssociatedPackages
+              - codeartifact:ListPackageGroups
+              - codeartifact:ListPackages
+              - codeartifact:ListPackageVersionAssets
+              - codeartifact:ListPackageVersionDependencies
+              - codeartifact:ListPackageVersions
+              - codeartifact:ListSubPackageGroups
+              - codeartifact:ReadFromRepository
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Resource: "*"
+            Action: 
+              - codeartifact:PublishPackageVersion
+              - codeartifact:PutPackageMetadata
+              - codeartifact:PutPackageOriginConfiguration
+              - codeartifact:UpdatePackageVersionsStatus
+
+  IWPrivateNodeProductionRepository:
+    Type: 'AWS::CodeArtifact::Repository'
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: Repository that contains built Node packages for deployment on production servers
+      RepositoryName: !Sub "${AWS::StackName}-${AWS::Region}-private-js-prod"
+      DomainName: !GetAtt IWProductionDomain.Name
+      PermissionsPolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Resource: "*"
+            Action:
+              - codeartifact:DescribePackage
+              - codeartifact:DescribePackageGroup
+              - codeartifact:DescribePackageVersion
+              - codeartifact:DescribeRepository
+              - codeartifact:GetPackageVersionAsset
+              - codeartifact:GetPackageVersionReadme
+              - codeartifact:GetRepositoryEndpoint
+              - codeartifact:ListAssociatedPackages
+              - codeartifact:ListPackageGroups
+              - codeartifact:ListPackages
+              - codeartifact:ListPackageVersionAssets
+              - codeartifact:ListPackageVersionDependencies
+              - codeartifact:ListPackageVersions
+              - codeartifact:ListSubPackageGroups
+              - codeartifact:ReadFromRepository
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Resource: "*"
+            Action: 
+              - codeartifact:PublishPackageVersion
+              - codeartifact:PutPackageMetadata
+              - codeartifact:PutPackageOriginConfiguration
+              - codeartifact:UpdatePackageVersionsStatus
