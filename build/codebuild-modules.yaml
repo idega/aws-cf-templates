@@ -1,0 +1,205 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  IWGithubRepo:
+    Description: Github url to module group
+    Type: String
+  IWGithubRepoBranch:
+    Description: Branch name in module group
+    Type: String
+
+  IWMavenSettingsPathInS3:
+    Description: Path where Maven setting file is placed
+    Type: String
+
+  IWJavaPackageName:
+    Description: Name of rpm installation file in S3 repo
+    Type: String
+  IWJavaPackagePathInS3:
+    Description: Path where JDK installation rpm placed in S3
+    Type: String
+  IWJavaHome:
+    Description: JAVA_HOME variable in server
+    Type: String
+
+  IWCodeArtifactDomain:
+    Description: CodeArtifact domain name of 3rd party dependencies which can not be found anywhere else
+    Type: String
+  IWCodeArtifactDomainRepoName:
+    Description: CodeArtifact repo name of 3rd party dependencies which can not be found anywhere else
+    Type: String
+Resources:
+  IWCodeBuildSourceArtifactsBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub "cb-${AWS::StackName}-${AWS::Region}"
+      VersioningConfiguration:
+        Status: Enabled
+
+  IWCodeBuildAPIUser:
+    Type: AWS::IAM::User
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+    Properties:
+      UserName: !Sub "cb-${AWS::StackName}-${AWS::Region}-api-user"
+      Policies:
+        - PolicyName: !Sub "IWCodeBuildReadAccessPolicy-${AWS::StackName}-${AWS::Region}"
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action:
+              - codeartifact:DescribeDomain
+              - codeartifact:GetAuthorizationToken
+              - codeartifact:GetDomainPermissionsPolicy
+              - codeartifact:ListRepositoriesInDomain
+              - sts:GetServiceBearerToken
+              Resource:
+              - !Sub arn:aws:codeartifact:${AWS::Region}:${AWS::AccountId}:domain/${IWCodeArtifactDomain}
+            - Effect: Allow
+              Action:
+              - ssm:GetParameters
+              - codeartifact:DescribePackage
+              - codeartifact:DescribePackageGroup
+              - codeartifact:DescribePackageVersion
+              - codeartifact:DescribeRepository
+              - codeartifact:GetPackageVersionAsset
+              - codeartifact:GetPackageVersionReadme
+              - codeartifact:GetRepositoryEndpoint
+              - codeartifact:ListAssociatedPackages
+              - codeartifact:ListPackageGroups
+              - codeartifact:ListPackages
+              - codeartifact:ListPackageVersionAssets
+              - codeartifact:ListPackageVersionDependencies
+              - codeartifact:ListPackageVersions
+              - codeartifact:ListSubPackageGroups
+              - codeartifact:ReadFromRepository
+              Resource:
+              - !Sub arn:aws:codeartifact:${AWS::Region}:${AWS::AccountId}:repository/${IWCodeArtifactDomain}/${IWCodeArtifactDomainRepoName}
+            - Effect: Allow
+              Action:
+              - s3:GetObject
+              - s3:ListBucket
+              Resource:
+              - !Sub ${IWCodeBuildSourceArtifactsBucket.Arn}
+              - !Sub ${IWCodeBuildSourceArtifactsBucket.Arn}/*
+            - Effect: Allow
+              Action:
+              - sts:GetServiceBearerToken
+              Resource: "*"
+
+  IWBuildConfAccessKey:
+    Type: AWS::IAM::AccessKey
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+    Properties:
+      UserName: !Ref IWCodeBuildAPIUser
+      Serial: 2
+      Status: Active
+
+  IWBuildConfAccessKeyValue:
+    Type: AWS::SecretsManager::Secret
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+    Properties:
+      Description: !Sub "cb-${AWS::StackName}-${AWS::Region}-conf-reader-key"
+      Name: !Sub "cb-${AWS::StackName}-${AWS::Region}-conf-reader-key"
+      SecretString: !Ref IWBuildConfAccessKey
+
+  IWBuildConfAccessKeySecret:
+    Type: AWS::SecretsManager::Secret
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+    Properties:
+      Description: !Sub "cb-${AWS::StackName}-${AWS::Region}-conf-reader-secret"
+      Name: !Sub "cb-${AWS::StackName}-${AWS::Region}-conf-reader-secret"
+      SecretString: !GetAtt IWBuildConfAccessKey.SecretAccessKey
+
+  IWCodeBuildRole:
+    Type: AWS::IAM::Role
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Action: sts:AssumeRole
+          Effect: Allow
+          Principal:
+            Service: codebuild.amazonaws.com
+      Path: /
+      RoleName: !Sub "IWServiceRoleForCodeBuild-${AWS::StackName}-${AWS::Region}"
+
+  IWCodeBuildPolicy:
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+    Properties:
+      PolicyDocument:
+        Statement:
+        - Action:
+          - logs:CreateLogGroup
+          - logs:CreateLogStream
+          - logs:PutLogEvents
+          Effect: Allow
+          Resource: '*'
+        - Action:
+          - secretsmanager:DescribeSecret
+          - secretsmanager:GetSecretValue
+          Effect: Allow
+          Resource: 
+            - !Ref IWBuildConfAccessKeyValue
+            - !Ref IWBuildConfAccessKeySecret
+      PolicyName: !Sub "IWCodeBuildServiceRolePolicy-${AWS::StackName}-${AWS::Region}"
+      Roles:
+      - !Ref IWCodeBuildRole
+    Type: AWS::IAM::Policy
+
+  IWPlatformBuildProject:
+    Type: AWS::CodeBuild::Project
+    DependsOn:
+         - IWCodeBuildPolicy
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+    Properties:
+      Artifacts:
+        Type: NO_ARTIFACTS # Going to use CodeArtifact & Maven integration to store public artifacts
+      BadgeEnabled: false # This needs to be done later. Let's use public stuff for now
+      Description: !Sub "${AWS::StackName}-${AWS::Region}-build-conf"
+      Environment:
+        ComputeType: BUILD_GENERAL1_LARGE
+        EnvironmentVariables:
+          - Name: JAVA_HOME
+            Value: !Ref IWJavaHome
+          - Name: IW_JDK_PACKAGE_FILE_NAME
+            Value: !Ref IWJavaPackageName
+          - Name: IW_JDK_PACKAGE_S3_PATH
+            Value: !Sub "s3://cb-${AWS::StackName}-${AWS::Region}/${IWJavaPackagePathInS3}"
+          - Name: IW_MAVEN_SETTINGS_S3_PATH
+            Value: !Sub "s3://cb-${AWS::StackName}-${AWS::Region}/${IWMavenSettingsPathInS3}"
+          - Name: IW_CODE_ART_DOMAIN
+            Value: !Ref IWCodeArtifactDomain
+          - Name: IW_CODE_ART_DOMAIN_OWNER
+            Value: !Ref AWS::AccountId
+          - Name: IW_CODE_ART_DOMAIN_REGION
+            Value: !Ref AWS::Region
+          - Name: IW_CODE_ART_DOMAIN_REPO_NAME
+            Value: !Ref IWCodeArtifactDomainRepoName
+          - Name: IW_AWS_ACCESS_KEY_ARN
+            Value: !Ref IWBuildConfAccessKeyValue
+          - Name: IW_AWS_ACCESS_SECRET_ARN
+            Value: !Ref IWBuildConfAccessKeySecret
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:5.0
+        Type: LINUX_CONTAINER
+      LogsConfig:
+        CloudWatchLogs:
+          GroupName: !Sub "${AWS::StackName}-${AWS::Region}-build"
+          Status: ENABLED
+      Name: !Sub "${AWS::StackName}-${AWS::Region}-build-conf"
+      Source:
+        GitSubmodulesConfig:
+          FetchSubmodules: false
+        Location: !Ref IWGithubRepo
+        Type: GITHUB
+      SourceVersion: !Ref IWGithubRepoBranch
+      ServiceRole: !Ref IWCodeBuildRole
+      TimeoutInMinutes: 30
