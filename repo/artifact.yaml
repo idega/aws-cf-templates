@@ -34,7 +34,7 @@ Resources:
           - Effect: Allow
             Principal:
               AWS: 
-              - !Sub arn:aws:iam::${AWS::AccountId}:root
+              - !Ref AWS::AccountId
             Resource: "*"
             Action:
               - codeartifact:CreateRepository
@@ -57,7 +57,8 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+              AWS: 
+              - !Ref AWS::AccountId
             Resource: "*"
             Action:
               - codeartifact:DescribePackage
@@ -98,7 +99,8 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+              AWS: 
+              - !Ref AWS::AccountId
             Resource: "*"
             Action:
               - codeartifact:DescribePackage
@@ -140,7 +142,7 @@ Resources:
           - Effect: Allow
             Principal:
               AWS: 
-              - !Sub arn:aws:iam::${AWS::AccountId}:root
+              - !Ref AWS::AccountId
             Resource: "*"
             Action:
               - codeartifact:CreateRepository
@@ -163,7 +165,8 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+              AWS: 
+              - !Ref AWS::AccountId
             Resource: "*"
             Action:
               - codeartifact:DescribePackage
@@ -204,7 +207,8 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+              AWS: 
+              - !Ref AWS::AccountId
             Resource: "*"
             Action:
               - codeartifact:DescribePackage
@@ -246,7 +250,7 @@ Resources:
           - Effect: Allow
             Principal:
               AWS: 
-              - !Sub arn:aws:iam::${AWS::AccountId}:root
+              - !Ref AWS::AccountId
             Resource: "*"
             Action:
               - codeartifact:CreateRepository
@@ -269,7 +273,8 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+              AWS: 
+              - !Ref AWS::AccountId
             Resource: "*"
             Action:
               - codeartifact:DescribePackage
@@ -289,7 +294,8 @@ Resources:
               - codeartifact:ReadFromRepository
           - Effect: Allow
             Principal:
-              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+              AWS: 
+              - !Ref AWS::AccountId
             Resource: "*"
             Action: 
               - codeartifact:PublishPackageVersion
@@ -310,7 +316,8 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+              AWS: 
+              - !Ref AWS::AccountId
             Resource: "*"
             Action:
               - codeartifact:DescribePackage
@@ -330,7 +337,8 @@ Resources:
               - codeartifact:ReadFromRepository
           - Effect: Allow
             Principal:
-              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+              AWS: 
+              - !Ref AWS::AccountId
             Resource: "*"
             Action: 
               - codeartifact:PublishPackageVersion
@@ -353,7 +361,7 @@ Resources:
           - Effect: Allow
             Principal:
               AWS: 
-              - !Sub arn:aws:iam::${AWS::AccountId}:root
+              - !Ref AWS::AccountId
             Resource: "*"
             Action:
               - codeartifact:CreateRepository
@@ -376,7 +384,8 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+              AWS: 
+              - !Ref AWS::AccountId
             Resource: "*"
             Action:
               - codeartifact:DescribePackage
@@ -396,7 +405,8 @@ Resources:
               - codeartifact:ReadFromRepository
           - Effect: Allow
             Principal:
-              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+              AWS: 
+              - !Ref AWS::AccountId
             Resource: "*"
             Action: 
               - codeartifact:PublishPackageVersion
@@ -417,7 +427,8 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+              AWS: 
+              - !Ref AWS::AccountId
             Resource: "*"
             Action:
               - codeartifact:DescribePackage
@@ -437,7 +448,8 @@ Resources:
               - codeartifact:ReadFromRepository
           - Effect: Allow
             Principal:
-              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+              AWS: 
+              - !Ref AWS::AccountId
             Resource: "*"
             Action: 
               - codeartifact:PublishPackageVersion
