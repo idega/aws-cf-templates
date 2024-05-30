@@ -3,9 +3,6 @@ Parameters:
   ProductHostedZoneId:
     Description: A domain name for subdomain records initialization
     Type: String
-  CompanyHostedZoneName:
-    Description: A domain name for subdomain records initialization
-    Type: String
   ProductDomain:
     Description: A domain name
     Type: String
@@ -126,6 +123,7 @@ Resources:
                 OriginProtocolPolicy: https-only
                 OriginSSLProtocols: 
                 - TLSv1.2
+                OriginReadTimeout: 180
           DefaultCacheBehavior:
             AllowedMethods:
               - GET
@@ -207,7 +205,6 @@ Resources:
   ProductDomainRoute:
     Type: 'AWS::Route53::RecordSetGroup'
     Properties:
-      # HostedZoneName: !Ref CompanyHostedZoneName
       HostedZoneId: !Ref ProductHostedZoneId
       RecordSets:
         - Name: !Ref ProductDomain
