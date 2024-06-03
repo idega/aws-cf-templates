@@ -1,0 +1,243 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  IWGithubRepo:
+    Description: Github url to module group
+    Type: String
+  IWGithubRepoBranch:
+    Description: Branch name in module group
+    Type: String
+
+  IWMavenSettingsPathInS3:
+    Description: Path where Maven setting file is placed
+    Type: String
+
+  IWJavaPackageName:
+    Description: Name of rpm installation file in S3 repo
+    Type: String
+  IWJavaPackagePathInS3:
+    Description: Path where JDK installation rpm placed in S3
+    Type: String
+  IWJavaHome:
+    Description: JAVA_HOME variable in server
+    Type: String
+
+  IWCodeArtifactDomain:
+    Description: CodeArtifact domain name of 3rd party dependencies which can not be found anywhere else
+    Type: String
+  IWCodeArtifactDomainRepoName:
+    Description: CodeArtifact repo name of 3rd party dependencies which can not be found anywhere else
+    Type: String
+Resources:
+  IWCodeBuildSourceArtifactsBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub "cb-dependency-${AWS::Region}-${AWS::StackName}"
+      VersioningConfiguration:
+        Status: Enabled
+
+  IWCodeBuildCLIUser:
+    Type: AWS::IAM::User
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      UserName: !Sub "cb-project-cli-user-${AWS::Region}-${AWS::StackName}"
+      Policies:
+        - PolicyName: !Sub "IWCodeBuildReadForCLIAccessPolicy-${AWS::Region}-${AWS::StackName}"
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+            - Effect: Allow
+              Action:
+              - codeartifact:DescribeDomain
+              - codeartifact:GetAuthorizationToken
+              - codeartifact:GetDomainPermissionsPolicy
+              - codeartifact:ListRepositoriesInDomain
+              - sts:GetServiceBearerToken
+              Resource:
+              - !Sub arn:${AWS::Partition}:codeartifact:${AWS::Region}:${AWS::AccountId}:domain/${IWCodeArtifactDomain}
+            - Effect: Allow
+              Action:
+              - ssm:GetParameters
+              - codeartifact:DescribePackage
+              - codeartifact:DescribePackageGroup
+              - codeartifact:DescribePackageVersion
+              - codeartifact:DescribeRepository
+              - codeartifact:GetPackageVersionAsset
+              - codeartifact:GetPackageVersionReadme
+              - codeartifact:GetRepositoryEndpoint
+              - codeartifact:ListAssociatedPackages
+              - codeartifact:ListPackageGroups
+              - codeartifact:ListPackages
+              - codeartifact:ListPackageVersionAssets
+              - codeartifact:ListPackageVersionDependencies
+              - codeartifact:ListPackageVersions
+              - codeartifact:ListSubPackageGroups
+              - codeartifact:ReadFromRepository
+              Resource:
+              - !Sub arn:${AWS::Partition}:codeartifact:${AWS::Region}:${AWS::AccountId}:repository/${IWCodeArtifactDomain}/${IWCodeArtifactDomainRepoName}
+            - Effect: Allow
+              Action:
+              - s3:GetObject
+              - s3:ListBucket
+              Resource:
+              - !Sub ${IWCodeBuildSourceArtifactsBucket.Arn}
+              - !Sub ${IWCodeBuildSourceArtifactsBucket.Arn}/*
+            - Effect: Allow
+              Action:
+              - sts:GetServiceBearerToken
+              Resource: "*"
+
+  IWCodeBuildProjectCLIAccessKey:
+    Type: AWS::IAM::AccessKey
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      UserName: !Ref IWCodeBuildCLIUser
+      Serial: 1
+      Status: Active
+
+  IWCodeBuildProjectCLIAccessKeyValue:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      Description: !Sub "An access key for code build project ${AWS::StackName} in ${AWS::Region}"
+      Name: !Sub "cb-project-api-access-key-${AWS::Region}-${AWS::StackName}"
+      SecretString: !Ref IWCodeBuildProjectCLIAccessKey
+
+  IWCodeBuildProjectCLIAccessKeySecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      Description: !Sub "An access secret for code build project ${AWS::StackName} in ${AWS::Region}"
+      Name: !Sub "cb-project-api-access-secret-${AWS::Region}-${AWS::StackName}"
+      SecretString: !GetAtt IWCodeBuildProjectCLIAccessKey.SecretAccessKey
+
+  IWCodeBuildServiceRole:
+    Type: AWS::IAM::Role
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Action: sts:AssumeRole
+          Effect: Allow
+          Principal:
+            Service: codebuild.amazonaws.com
+      Path: /
+      RoleName: !Sub "IWServiceRoleForCodeBuild-${AWS::Region}-${AWS::StackName}"
+
+  IWCodeBuildServicePolicy:
+    Type: AWS::IAM::Policy
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      PolicyDocument:
+        Statement:
+        - Action:
+          - logs:CreateLogGroup
+          - logs:CreateLogStream
+          - logs:PutLogEvents
+          Effect: Allow
+          Resource: '*'
+        - Action:
+          - secretsmanager:DescribeSecret
+          - secretsmanager:GetSecretValue
+          Effect: Allow
+          Resource: 
+            - !Ref IWCodeBuildProjectCLIAccessKeyValue
+            - !Ref IWCodeBuildProjectCLIAccessKeySecret
+      PolicyName: !Sub "IWCodeBuildServiceRolePolicy-${AWS::Region}-${AWS::StackName}"
+      Roles:
+      - !Ref IWCodeBuildServiceRole
+
+  IWCodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    DependsOn:
+      - IWCodeBuildServicePolicy
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      Artifacts:
+        Type: NO_ARTIFACTS # Going to use CodeArtifact & Maven integration to store public artifacts
+      BadgeEnabled: false # This needs to be done later. Let's use public stuff for now
+      Description: !Sub "A build project for ePlatform application defined in stack ${AWS::StackName} in ${AWS::Region} region"
+      Environment:
+        ComputeType: BUILD_GENERAL1_LARGE
+        EnvironmentVariables:
+          - Name: JAVA_HOME
+            Value: !Ref IWJavaHome
+          - Name: IW_JDK_PACKAGE_FILE_NAME
+            Value: !Ref IWJavaPackageName
+          - Name: IW_JDK_PACKAGE_S3_PATH
+            Value: !Sub "s3://${IWCodeBuildSourceArtifactsBucket}/${IWJavaPackagePathInS3}"
+          - Name: IW_MAVEN_SETTINGS_S3_PATH
+            Value: !Sub "s3://${IWCodeBuildSourceArtifactsBucket}/${IWMavenSettingsPathInS3}"
+          - Name: IW_CODE_ART_DOMAIN
+            Value: !Ref IWCodeArtifactDomain
+          - Name: IW_CODE_ART_DOMAIN_OWNER
+            Value: !Ref AWS::AccountId
+          - Name: IW_CODE_ART_DOMAIN_REGION
+            Value: !Ref AWS::Region
+          - Name: IW_CODE_ART_DOMAIN_REPO_NAME
+            Value: !Ref IWCodeArtifactDomainRepoName
+          - Name: IW_AWS_ACCESS_KEY_ARN
+            Value: !Ref IWCodeBuildProjectCLIAccessKeyValue
+          - Name: IW_AWS_ACCESS_SECRET_ARN
+            Value: !Ref IWCodeBuildProjectCLIAccessKeySecret
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:5.0
+        Type: LINUX_CONTAINER
+      LogsConfig:
+        CloudWatchLogs:
+          GroupName: !Sub "cb-ep-project-${AWS::Region}-${AWS::StackName}"
+          Status: ENABLED
+      Name: !Sub "cb-ep-project-${AWS::Region}-${AWS::StackName}"
+      Source:
+        GitSubmodulesConfig:
+          FetchSubmodules: false
+        Location: !Ref IWGithubRepo
+        Type: GITHUB
+      SourceVersion: !Ref IWGithubRepoBranch
+      SecondarySources:
+        - Auth:
+            Type: OAUTH
+          Location: "https://github.com/idega/com.idega.block.platform.git"
+          GitSubmodulesConfig:
+            FetchSubmodules: false
+          SourceIdentifier: "PLATFORM"
+          Type: GITHUB
+        - Auth:
+            Type: OAUTH
+          Location: "https://github.com/idega/com.idega.block.addon.git"
+          GitSubmodulesConfig:
+            FetchSubmodules: false
+          SourceIdentifier: "ADDON"
+          Type: GITHUB
+        - Auth:
+            Type: OAUTH
+          Location: "https://github.com/idega/com.idega.block.egov.git"
+          GitSubmodulesConfig:
+            FetchSubmodules: false
+          SourceIdentifier: "EGOV"
+          Type: GITHUB
+        - Auth:
+            Type: OAUTH
+          Location: "https://github.com/idega/com.idega.maven.webapp.git"
+          GitSubmodulesConfig:
+            FetchSubmodules: false
+          SourceIdentifier: "WEBAPP"
+          Type: GITHUB
+      SecondarySourceVersions:
+        - SourceIdentifier: "PLATFORM"
+          SourceVersion: !Ref IWGithubRepoBranch
+        - SourceIdentifier: "ADDON"
+          SourceVersion: !Ref IWGithubRepoBranch
+        - SourceIdentifier: "EGOV"
+          SourceVersion: !Ref IWGithubRepoBranch
+        - SourceIdentifier: "WEBAPP"
+          SourceVersion: !Ref IWGithubRepoBranch
+      ServiceRole: !Ref IWCodeBuildServiceRole
+      TimeoutInMinutes: 60
