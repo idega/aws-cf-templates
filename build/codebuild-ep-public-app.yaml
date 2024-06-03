@@ -103,7 +103,6 @@ Resources:
         EncryptionDisabled: true
         Location: !Ref IWCodeBuildArtifactBucket
         Packaging: NONE
-        Path: build
         Type: S3
       BadgeEnabled: false # This needs to be done later. Let's use public stuff for now
       Description: !Sub "A build project for ePlatform application defined in stack ${AWS::StackName} in ${AWS::Region} region"
@@ -231,6 +230,21 @@ Resources:
           Resource: 
             - !Ref IWCodeBuildProjectCLIAccessKeyValue
             - !Ref IWCodeBuildProjectCLIAccessKeySecret
+        - Action:
+          - s3:GetObject*
+          - s3:PutObject*
+          - s3:ListBucket*
+          Effect: Allow
+          Resource:
+          - !Sub ${IWCodeBuildArtifactBucket.Arn}
+          - !Sub ${IWCodeBuildArtifactBucket.Arn}/*
+        - Action:
+          - kms:DescribeKey
+          - kms:Decrypt
+          - kms:Encrypt
+          - kms:GenerateDataKey
+          Effect: Allow
+          Resource: "*" # Specific bucket? Specific key access?
       PolicyName: !Sub "IWCodeBuildServiceRolePolicy-${AWS::Region}-${AWS::StackName}"
       Roles:
       - !Ref IWCodeBuildServiceRole
