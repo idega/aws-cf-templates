@@ -37,15 +37,6 @@ Resources:
     UpdateReplacePolicy: Delete
     Properties:
       UserName: !Sub "cb-project-cli-user-${AWS::Region}-${AWS::StackName}"
-      Policies:
-        - PolicyName: !Sub "IWCodeBuildReadForCLIAccessPolicy-${AWS::Region}-${AWS::StackName}"
-          PolicyDocument:
-            Version: 2012-10-17
-            Statement:
-            - Effect: Allow
-              Action:
-              - sts:GetServiceBearerToken
-              Resource: "*" # Specific service access?
 
   IWCodeBuildProjectCLIAccessKey:
     Type: AWS::IAM::AccessKey
@@ -89,46 +80,6 @@ Resources:
       Path: /
       RoleName: !Sub "IWServiceRoleForCodeBuild-${AWS::Region}-${AWS::StackName}"
 
-  IWCodeBuildServicePolicy:
-    DeletionPolicy: Delete
-    UpdateReplacePolicy: Delete
-    Properties:
-      PolicyDocument:
-        Statement:
-        - Action:
-          - logs:CreateLogGroup
-          - logs:CreateLogStream
-          - logs:PutLogEvents
-          Effect: Allow
-          Resource: '*' # Log group access?
-        - Action:
-          - secretsmanager:GetSecretValue
-          Effect: Allow
-          Resource: 
-            - !Ref IWCodeBuildProjectCLIAccessKeyValue
-            - !Ref IWCodeBuildProjectCLIAccessKeySecret
-        - Action:
-          - s3:GetObject*
-          - s3:PutObject*
-          - s3:ListBucket*
-          Effect: Allow
-          Resource:
-          - !Sub ${IWCodeBuildArtifactBucket.Arn}
-          - !Sub ${IWCodeBuildArtifactBucket.Arn}/*
-          - !Sub ${IWCodeBuildCacheBucket.Arn}
-          - !Sub ${IWCodeBuildCacheBucket.Arn}/*
-        - Action:
-          - kms:DescribeKey
-          - kms:Decrypt
-          - kms:Encrypt
-          - kms:GenerateDataKey
-          Effect: Allow
-          Resource: "*" # Specific bucket? Specific key access?
-      PolicyName: !Sub "IWCodeBuildServiceRolePolicy-${AWS::Region}-${AWS::StackName}"
-      Roles:
-      - !Ref IWCodeBuildServiceRole
-    Type: AWS::IAM::Policy
-
   IWCodeBuildProject:
     Type: AWS::CodeBuild::Project
     DependsOn:
@@ -140,7 +91,6 @@ Resources:
         EncryptionDisabled: true
         Location: !Ref IWCodeBuildArtifactBucket
         Packaging: NONE
-        Path: build
         Type: S3 
       BadgeEnabled: false # This needs to be done later. Let's use public stuff for now
       Description: !Sub "A build project for UI application defined in stack ${AWS::StackName} in ${AWS::Region} region"
@@ -186,6 +136,50 @@ Resources:
           SourceVersion: !Ref IWBaseLibGithubRepoBranch
       ServiceRole: !Ref IWCodeBuildServiceRole
       TimeoutInMinutes: 15
+
+  #
+  # Policies
+  #
+
+  IWCodeBuildServicePolicy:
+    Type: AWS::IAM::Policy
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      PolicyDocument:
+        Statement:
+        - Action:
+          - logs:CreateLogGroup
+          - logs:CreateLogStream
+          - logs:PutLogEvents
+          Effect: Allow
+          Resource: '*' # Log group access?
+        - Action:
+          - secretsmanager:GetSecretValue
+          Effect: Allow
+          Resource: 
+            - !Ref IWCodeBuildProjectCLIAccessKeyValue
+            - !Ref IWCodeBuildProjectCLIAccessKeySecret
+        - Action:
+          - s3:GetObject*
+          - s3:PutObject*
+          - s3:ListBucket*
+          Effect: Allow
+          Resource:
+          - !Sub ${IWCodeBuildArtifactBucket.Arn}
+          - !Sub ${IWCodeBuildArtifactBucket.Arn}/*
+          - !Sub ${IWCodeBuildCacheBucket.Arn}
+          - !Sub ${IWCodeBuildCacheBucket.Arn}/*
+        - Action:
+          - kms:DescribeKey
+          - kms:Decrypt
+          - kms:Encrypt
+          - kms:GenerateDataKey
+          Effect: Allow
+          Resource: "*" # Specific bucket? Specific key access?
+      PolicyName: !Sub "IWCodeBuildServiceRolePolicy-${AWS::Region}-${AWS::StackName}"
+      Roles:
+      - !Ref IWCodeBuildServiceRole
 
   IWCodeBuildCacheBucketPolicy:
     DeletionPolicy: Delete
@@ -234,3 +228,18 @@ Resources:
           Resource:
           - !Sub ${IWCodeBuildArtifactBucket.Arn}
           - !Sub ${IWCodeBuildArtifactBucket.Arn}/*
+
+  IWCodeBuildCLIUserPolicy:
+    Type: AWS::IAM::UserPolicy
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      PolicyName: !Sub "IWCodeBuildReadForCLIAccessPolicy-${AWS::Region}-${AWS::StackName}"
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+        - Effect: Allow
+          Action:
+          - sts:GetServiceBearerToken
+          Resource: "*"
+      UserName: !Ref IWCodeBuildCLIUser
