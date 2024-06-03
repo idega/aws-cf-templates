@@ -1,0 +1,236 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  IWGithubRepo:
+    Description: Github url to module group
+    Type: String
+  IWGithubRepoBranch:
+    Description: Branch name in module group
+    Type: String
+  IWBaseLibGithubRepo:
+    Description: Github url to base ui repo
+    Type: String
+  IWBaseLibGithubRepoBranch:
+    Description: Github branch of base ui repo
+    Type: String
+
+  IWCapchaKey:
+    Description: IW custom capcha key
+    Type: String
+Resources:
+  IWCodeBuildCacheBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub "cb-cache-${AWS::Region}-${AWS::StackName}"
+
+  IWCodeBuildArtifactBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub "cb-artifact-${AWS::Region}-${AWS::StackName}"
+
+  IWCodeBuildCLIUser:
+    Type: AWS::IAM::User
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      UserName: !Sub "cb-project-cli-user-${AWS::Region}-${AWS::StackName}"
+      Policies:
+        - PolicyName: !Sub "IWCodeBuildReadForCLIAccessPolicy-${AWS::Region}-${AWS::StackName}"
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+            - Effect: Allow
+              Action:
+              - sts:GetServiceBearerToken
+              Resource: "*" # Specific service access?
+
+  IWCodeBuildProjectCLIAccessKey:
+    Type: AWS::IAM::AccessKey
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      UserName: !Ref IWCodeBuildCLIUser
+      Serial: 2
+      Status: Active
+
+  IWCodeBuildProjectCLIAccessKeyValue:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      Description: !Sub "An access key for code build project ${AWS::StackName} in ${AWS::Region}"
+      Name: !Sub "cb-project-api-access-key-${AWS::Region}-${AWS::StackName}"
+      SecretString: !Ref IWCodeBuildProjectCLIAccessKey
+
+  IWCodeBuildProjectCLIAccessKeySecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      Description: !Sub "An access secret for code build project ${AWS::StackName} in ${AWS::Region}"
+      Name: !Sub "cb-project-api-access-secret-${AWS::Region}-${AWS::StackName}"
+      SecretString: !GetAtt IWCodeBuildProjectCLIAccessKey.SecretAccessKey
+
+  IWCodeBuildServiceRole:
+    Type: AWS::IAM::Role
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Action: sts:AssumeRole
+          Effect: Allow
+          Principal:
+            Service: codebuild.amazonaws.com
+      Description: !Sub "Allows access to required resources and actions for CodeBuild project ${AWS::StackName} in ${AWS::Region}"
+      Path: /
+      RoleName: !Sub "IWServiceRoleForCodeBuild-${AWS::Region}-${AWS::StackName}"
+
+  IWCodeBuildServicePolicy:
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      PolicyDocument:
+        Statement:
+        - Action:
+          - logs:CreateLogGroup
+          - logs:CreateLogStream
+          - logs:PutLogEvents
+          Effect: Allow
+          Resource: '*' # Log group access?
+        - Action:
+          - secretsmanager:GetSecretValue
+          Effect: Allow
+          Resource: 
+            - !Ref IWCodeBuildProjectCLIAccessKeyValue
+            - !Ref IWCodeBuildProjectCLIAccessKeySecret
+        - Action:
+          - s3:GetObject*
+          - s3:PutObject*
+          - s3:ListBucket*
+          Effect: Allow
+          Resource:
+          - !Sub ${IWCodeBuildArtifactBucket.Arn}
+          - !Sub ${IWCodeBuildArtifactBucket.Arn}/*
+          - !Sub ${IWCodeBuildCacheBucket.Arn}
+          - !Sub ${IWCodeBuildCacheBucket.Arn}/*
+        - Action:
+          - kms:DescribeKey
+          - kms:Decrypt
+          - kms:Encrypt
+          - kms:GenerateDataKey
+          Effect: Allow
+          Resource: "*" # Specific bucket? Specific key access?
+      PolicyName: !Sub "IWCodeBuildServiceRolePolicy-${AWS::Region}-${AWS::StackName}"
+      Roles:
+      - !Ref IWCodeBuildServiceRole
+    Type: AWS::IAM::Policy
+
+  IWCodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    DependsOn:
+      - IWCodeBuildServicePolicy
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      Artifacts:
+        EncryptionDisabled: true
+        Location: !Ref IWCodeBuildArtifactBucket
+        Packaging: NONE
+        Path: build
+        Type: S3 
+      BadgeEnabled: false # This needs to be done later. Let's use public stuff for now
+      Description: !Sub "A build project for UI application defined in stack ${AWS::StackName} in ${AWS::Region} region"
+      Cache:
+        Location: !Ref IWCodeBuildCacheBucket
+        Type: S3
+      Environment:
+        ComputeType: BUILD_GENERAL1_LARGE
+        EnvironmentVariables:
+          - Name: IW_CAPCHA_CODE_SECRET
+            Value: !Ref IWCapchaKey
+          - Name: IW_AWS_ACCESS_KEY_ARN
+            Value: !Ref IWCodeBuildProjectCLIAccessKeyValue
+          - Name: IW_AWS_ACCESS_SECRET_ARN
+            Value: !Ref IWCodeBuildProjectCLIAccessKeySecret
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:5.0
+        PrivilegedMode: true
+        Type: LINUX_CONTAINER
+      LogsConfig:
+        CloudWatchLogs:
+          GroupName: !Sub "cb-ui-project-${AWS::Region}-${AWS::StackName}"
+          Status: ENABLED
+      Name: !Sub "cb-ui-project-${AWS::Region}-${AWS::StackName}"
+      Source:
+        Auth:
+          Type: OAUTH
+        GitSubmodulesConfig:
+          FetchSubmodules: false
+        Location: !Ref IWGithubRepo
+        SourceIdentifier: APP
+        Type: GITHUB
+      SourceVersion: !Ref IWGithubRepoBranch
+      SecondarySources:
+        - Auth:
+            Type: OAUTH
+          Location: !Ref IWBaseLibGithubRepo
+          GitSubmodulesConfig:
+            FetchSubmodules: false
+          SourceIdentifier: "UI_BASE"
+          Type: GITHUB
+      SecondarySourceVersions:
+        - SourceIdentifier: "UI_BASE"
+          SourceVersion: !Ref IWBaseLibGithubRepoBranch
+      ServiceRole: !Ref IWCodeBuildServiceRole
+      TimeoutInMinutes: 15
+
+  IWCodeBuildCacheBucketPolicy:
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref IWCodeBuildCacheBucket
+      PolicyDocument:
+        Id: !Sub "IWCacheBucketFullAccessForCodeBuild-${AWS::Region}-${AWS::StackName}"
+        Version: 2012-10-17
+        Statement:
+        - Action:
+          - s3:DeleteObject*
+          - s3:GetObject*
+          - s3:PutObject*
+          - s3:ListBucket*
+          - s3:GetBucketAcl
+          - s3:GetBucketLocation
+          Effect: Allow
+          Principal:
+            Service: codebuild.amazonaws.com
+          Resource:
+          - !Sub ${IWCodeBuildCacheBucket.Arn}
+          - !Sub ${IWCodeBuildCacheBucket.Arn}/*
+
+  IWCodeBuildArtifactBucketPolicy:
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref IWCodeBuildArtifactBucket
+      PolicyDocument:
+        Id: !Sub "IWArtifactBucketFullAccessForCodeBuild-${AWS::Region}-${AWS::StackName}"
+        Version: 2012-10-17
+        Statement:
+        - Action:
+          - s3:DeleteObject*
+          - s3:GetObject*
+          - s3:PutObject*
+          - s3:ListBucket*
+          - s3:GetBucketAcl
+          - s3:GetBucketLocation
+          Effect: Allow
+          Principal:
+            Service: codebuild.amazonaws.com
+          Resource:
+          - !Sub ${IWCodeBuildArtifactBucket.Arn}
+          - !Sub ${IWCodeBuildArtifactBucket.Arn}/*

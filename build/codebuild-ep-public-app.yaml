@@ -144,7 +144,6 @@ Resources:
           Effect: Allow
           Resource: '*'
         - Action:
-          - secretsmanager:DescribeSecret
           - secretsmanager:GetSecretValue
           Effect: Allow
           Resource: 
