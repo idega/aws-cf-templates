@@ -34,6 +34,14 @@ phases:
       - npm install --save @types/parse-json@4.0.0
       - npm install
       - npm run build
+  post_build:
+    run-as: root
+    on-failure: ABORT
+    commands:
+      - cd $CODEBUILD_SRC_DIR/build
+      - gzip --best -c index.bundle.js  > index.bundle.js.gz
+      - gzip --best -c index.styles.css > index.styles.css.gz
+      - gzip --best -c index.fonts.css  > index.fonts.css.gz
 artifacts:
   files:
     - '**/*'
