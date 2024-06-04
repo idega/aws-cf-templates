@@ -44,6 +44,13 @@ Resources:
     Properties:
       BucketName: !Sub "cb-artifact-${AWS::Region}-${AWS::StackName}"
 
+  IWCodeBuildLogsBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub "cb-logs-${AWS::Region}-${AWS::StackName}"
+
   IWCodeBuildCLIUser:
     Type: AWS::IAM::User
     DeletionPolicy: Delete
@@ -135,6 +142,9 @@ Resources:
         CloudWatchLogs:
           GroupName: !Sub "cb-ep-project-${AWS::Region}-${AWS::StackName}"
           Status: ENABLED
+        S3Logs:
+          Location: !Ref IWCodeBuildLogsBucket
+          Status: ENABLED
       Name: !Sub "cb-ep-project-${AWS::Region}-${AWS::StackName}"
       Source:
         GitSubmodulesConfig:
@@ -210,6 +220,30 @@ Resources:
           Resource:
           - !Sub ${IWCodeBuildArtifactBucket.Arn}
           - !Sub ${IWCodeBuildArtifactBucket.Arn}/*
+
+  IWCodeBuildLogsBucketPolicy:
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref IWCodeBuildLogsBucket
+      PolicyDocument:
+        Id: !Sub "IWLogsBucketFullAccessForCodeBuild-${AWS::Region}-${AWS::StackName}"
+        Version: 2012-10-17
+        Statement:
+        - Action:
+          - s3:DeleteObject*
+          - s3:GetObject*
+          - s3:PutObject*
+          - s3:ListBucket*
+          - s3:GetBucketAcl
+          - s3:GetBucketLocation
+          Effect: Allow
+          Principal:
+            Service: codebuild.amazonaws.com
+          Resource:
+          - !Sub ${IWCodeBuildLogsBucket.Arn}
+          - !Sub ${IWCodeBuildLogsBucket.Arn}/*
 
   IWCodeBuildServicePolicy:
     Type: AWS::IAM::Policy
