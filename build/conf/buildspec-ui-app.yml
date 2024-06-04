@@ -7,7 +7,7 @@ env:
   secrets-manager:
     AWS_ACCESS_KEY: ${IW_AWS_ACCESS_KEY_ARN}
     AWS_SECRET_KEY: ${IW_AWS_ACCESS_SECRET_ARN}
-
+    ENV_FILE_CONTENT: ${IW_AWS_ENV_SECRET_ARN}
 batch:
   fast-fail: true
 
@@ -20,6 +20,9 @@ phases:
       - aws configure set aws_access_key_id $AWS_ACCESS_KEY 
       - aws configure set aws_secret_access_key $AWS_SECRET_KEY
       - n 6.17.1
+      - cd $CODEBUILD_SRC_DIR
+      - jq '.' <<< $ENV_FILE_CONTENT | jq -r "to_entries|map(\"\(.key)=\(.value|tostring)\")|.[]" | cat > .env
+      - cat .env
   build:
     run-as: root
     on-failure: ABORT

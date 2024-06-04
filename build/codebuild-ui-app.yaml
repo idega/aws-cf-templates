@@ -12,10 +12,6 @@ Parameters:
   IWBaseLibGithubRepoBranch:
     Description: Github branch of base ui repo
     Type: String
-
-  IWCapchaKey:
-    Description: IW custom capcha key
-    Type: String
 Resources:
   IWCodeBuildCacheBucket:
     Type: AWS::S3::Bucket
@@ -72,6 +68,14 @@ Resources:
       Name: !Sub "cb-project-api-access-secret-${AWS::Region}-${AWS::StackName}"
       SecretString: !GetAtt IWCodeBuildProjectCLIAccessKey.SecretAccessKey
 
+  IWCodeBuildProjectEnvSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: !Sub "An .env file secrets for code build project ${AWS::StackName} in ${AWS::Region} that will be installed as environmental variables"
+      Name: !Sub "cb-project-env-secret-${AWS::Region}-${AWS::StackName}"
+
   IWCodeBuildServiceRole:
     Type: AWS::IAM::Role
     DeletionPolicy: Delete
@@ -107,12 +111,12 @@ Resources:
       Environment:
         ComputeType: BUILD_GENERAL1_LARGE
         EnvironmentVariables:
-          - Name: IW_CAPCHA_CODE_SECRET
-            Value: !Ref IWCapchaKey
           - Name: IW_AWS_ACCESS_KEY_ARN
             Value: !Ref IWCodeBuildProjectCLIAccessKeyValue
           - Name: IW_AWS_ACCESS_SECRET_ARN
             Value: !Ref IWCodeBuildProjectCLIAccessKeySecret
+          - Name: IW_AWS_ENV_SECRET_ARN
+            Value: !Ref IWCodeBuildProjectEnvSecret
         Image: aws/codebuild/amazonlinux2-x86_64-standard:5.0
         PrivilegedMode: true
         Type: LINUX_CONTAINER
@@ -170,6 +174,7 @@ Resources:
           Resource: 
             - !Ref IWCodeBuildProjectCLIAccessKeyValue
             - !Ref IWCodeBuildProjectCLIAccessKeySecret
+            - !Ref IWCodeBuildProjectEnvSecret
         - Action:
           - s3:GetObject*
           - s3:PutObject*
@@ -279,3 +284,8 @@ Resources:
           - sts:GetServiceBearerToken
           Resource: "*"
       UserName: !Ref IWCodeBuildCLIUser
+
+Outputs:
+  IWEnvFile:
+    Value: !Ref IWCodeBuildProjectEnvSecret
+
