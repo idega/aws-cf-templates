@@ -199,7 +199,6 @@ Resources:
     Properties:
       Bucket: !Ref ProductBucket
       PolicyDocument:
-        Id: PolicyForCloudFrontPrivateContent
         Version: 2012-10-17
         Statement:
           - Action:

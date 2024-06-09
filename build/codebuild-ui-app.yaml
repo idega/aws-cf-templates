@@ -103,7 +103,7 @@ Resources:
         Location: !Ref IWCodeBuildArtifactBucket
         Packaging: NONE
         Type: S3 
-      BadgeEnabled: false # This needs to be done later. Let's use public stuff for now
+      BadgeEnabled: true
       Description: !Sub "A build project for UI application defined in stack ${AWS::StackName} in ${AWS::Region} region"
       Cache:
         Location: !Ref IWCodeBuildCacheBucket
