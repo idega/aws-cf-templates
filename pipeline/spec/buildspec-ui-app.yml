@@ -1,0 +1,56 @@
+version: 0.2
+
+run-as: root
+
+env:
+  shell: bash
+  secrets-manager:
+    AWS_ACCESS_KEY: ${IW_AWS_ACCESS_KEY_ARN}
+    AWS_SECRET_KEY: ${IW_AWS_ACCESS_SECRET_ARN}
+    ENV_FILE_CONTENT: ${IW_AWS_ENV_SECRET_ARN}
+batch:
+  fast-fail: true
+
+phases:
+  install:
+    run-as: root
+    on-failure: ABORT
+    commands:
+      - sysctl fs.inotify.max_user_watches=524288
+      - aws configure set aws_access_key_id $AWS_ACCESS_KEY 
+      - aws configure set aws_secret_access_key $AWS_SECRET_KEY
+      - n 6.17.1
+      - cd $CODEBUILD_SRC_DIR
+      - jq '.' <<< $ENV_FILE_CONTENT | jq -r "to_entries|map(\"\(.key)=\(.value|tostring)\")|.[]" | cat > .env
+      - cat .env
+  build:
+    run-as: root
+    on-failure: ABORT
+    commands:
+      - cd $CODEBUILD_SRC_DIR_UI_BASE
+      - npm install
+      - cd $CODEBUILD_SRC_DIR
+      - sed -i '/watch\:\ true/c watch\:\ false,' webpack.config.js
+      - npm install --save @types/parse-json@4.0.0
+      - npm install
+      - npm run build
+  post_build:
+    run-as: root
+    on-failure: ABORT
+    commands:
+      - cd $CODEBUILD_SRC_DIR/build
+      - gzip --best -c index.bundle.js  > index.bundle.js.gz
+      - gzip --best -c index.styles.css > index.styles.css.gz
+      - gzip --best -c index.fonts.css  > index.fonts.css.gz
+      - aws s3 cp --recursive . s3://$IW_AWS_CF_BUCKET
+      - aws s3api put-object --bucket $IW_AWS_CF_BUCKET --key index.bundle.js   --body index.bundle.js.gz   --content-type application/javascript --content-encoding gzip
+      - aws s3api put-object --bucket $IW_AWS_CF_BUCKET --key index.fonts.css   --body index.fonts.css.gz   --content-type text/css               --content-encoding gzip
+      - aws s3api put-object --bucket $IW_AWS_CF_BUCKET --key index.styles.css  --body index.styles.css.gz  --content-type text/css               --content-encoding gzip
+      - aws cloudfront create-invalidation --distribution-id ${IW_AWS_CF_DISTRO} --paths "/*"
+artifacts:
+  files:
+    - '**/*'
+  base-directory: 'build'
+cache:
+  paths:
+    - node_modules
