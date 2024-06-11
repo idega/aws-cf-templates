@@ -161,7 +161,7 @@ Resources:
         Packaging: NONE
         Type: S3 
       BadgeEnabled: true
-      Description: !Sub "A build project for UI application defined in stack ${AWS::StackName} in ${AWS::Region} region"
+      Description: !Sub "${IWGithubRepoBranch} | ${IWCloudFrontDomain}"
       Cache:
         Location: !Ref IWCodeBuildCacheBucket
         Type: S3
