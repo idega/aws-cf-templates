@@ -1,0 +1,529 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  IWCloudFrontDomain:
+    Description: A domain name
+    Type: String
+  IWCloudFrontDomainCertARN:
+    Description: A domain certificate id. For now it stays manual.
+    Type: String
+  IWCloudFrontAPIDomain:
+    Default: URI where IWCloudFront API is located
+    Type: String
+  IWGithubRepo:
+    Description: Github url to module group
+    Type: String
+  IWGithubRepoBranch:
+    Description: Branch name in module group
+    Type: String
+  IWBaseLibGithubRepo:
+    Description: Github url to base ui repo
+    Type: String
+  IWBaseLibGithubRepoBranch:
+    Description: Github branch of base ui repo
+    Type: String
+Resources:
+
+  #
+  # Buckets
+  #
+
+  IWCodeBuildArtifactBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub "cb-artifact-${AWS::Region}-${AWS::StackName}"
+
+  IWCodeBuildCacheBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub "cb-cache-${AWS::Region}-${AWS::StackName}"
+
+  IWCodeBuildLogsBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub "cb-logs-${AWS::Region}-${AWS::StackName}"
+
+  IWCloudFrontBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Ref IWCloudFrontDomain
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls : true
+        BlockPublicPolicy : true
+        IgnorePublicAcls : true
+        RestrictPublicBuckets : true
+      VersioningConfiguration:
+        Status: Enabled
+
+  IWCloudFrontLogsBucket:
+    Type: 'AWS::S3::Bucket'
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub cf-logs-${IWCloudFrontDomain}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls : true
+        BlockPublicPolicy : true
+        IgnorePublicAcls : true
+        RestrictPublicBuckets : true
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: 'AES256'
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerPreferred
+
+  #
+  # CLI
+  #
+
+  IWCommandLineUser:
+    Type: AWS::IAM::User
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      UserName: !Sub "cb-project-cli-user-${AWS::Region}-${AWS::StackName}"
+
+  IWCommandLineUserAccessKey:
+    Type: AWS::IAM::AccessKey
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      UserName: !Ref IWCommandLineUser
+      Serial: 2
+      Status: Active
+
+  IWCommandLineUserAccessKeyValue:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      Description: !Sub "An access key for code build project ${AWS::StackName} in ${AWS::Region}"
+      Name: !Sub "cb-project-api-access-key-${AWS::Region}-${AWS::StackName}"
+      SecretString: !Ref IWCommandLineUserAccessKey
+
+  IWCommandLineUserAccessKeySecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      Description: !Sub "An access secret for code build project ${AWS::StackName} in ${AWS::Region}"
+      Name: !Sub "cb-project-api-access-secret-${AWS::Region}-${AWS::StackName}"
+      SecretString: !GetAtt IWCommandLineUserAccessKey.SecretAccessKey
+
+  #
+  # Code Build
+  #
+
+  IWCodeBuildProjectEnvSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: !Sub "An .env file secrets for code build project ${AWS::StackName} in ${AWS::Region} that will be installed as environmental variables"
+      Name: !Sub "cb-project-env-secret-${AWS::Region}-${AWS::StackName}"
+
+  IWCodeBuildServiceRole:
+    Type: AWS::IAM::Role
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Action: sts:AssumeRole
+          Effect: Allow
+          Principal:
+            Service: codebuild.amazonaws.com
+      Description: !Sub "Allows access to required resources and actions for CodeBuild project ${AWS::StackName} in ${AWS::Region}"
+      Path: /
+      RoleName: !Sub "IWServiceRoleForCodeBuild-${AWS::Region}-${AWS::StackName}"
+
+  IWCodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    DependsOn:
+      - IWCodeBuildServicePolicy
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      Artifacts:
+        EncryptionDisabled: true
+        Location: !Ref IWCodeBuildArtifactBucket
+        Packaging: NONE
+        Type: S3 
+      BadgeEnabled: true
+      Description: !Sub "A build project for UI application defined in stack ${AWS::StackName} in ${AWS::Region} region"
+      Cache:
+        Location: !Ref IWCodeBuildCacheBucket
+        Type: S3
+      Environment:
+        ComputeType: BUILD_GENERAL1_LARGE
+        EnvironmentVariables:
+          - Name: IW_AWS_ACCESS_KEY_ARN
+            Value: !Ref IWCommandLineUserAccessKeyValue
+          - Name: IW_AWS_ACCESS_SECRET_ARN
+            Value: !Ref IWCommandLineUserAccessKeySecret
+          - Name: IW_AWS_ENV_SECRET_ARN
+            Value: !Ref IWCodeBuildProjectEnvSecret
+          - Name: IW_AWS_CF_DISTRO
+            Value: !Ref IWCloudFrontCloudFrontDistribution
+          - Name: IW_AWS_CF_BUCKET
+            Value: !Ref IWCloudFrontBucket
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:5.0
+        PrivilegedMode: true
+        Type: LINUX_CONTAINER
+      LogsConfig:
+        CloudWatchLogs:
+          GroupName: !Sub "cb-ui-project-${AWS::Region}-${AWS::StackName}"
+          Status: ENABLED
+        S3Logs:
+          Location: !Ref IWCodeBuildLogsBucket
+          Status: ENABLED
+      Name: !Sub "cb-ui-project-${AWS::Region}-${AWS::StackName}"
+      Source:
+        Auth:
+          Type: OAUTH
+        GitSubmodulesConfig:
+          FetchSubmodules: false
+        Location: !Ref IWGithubRepo
+        SourceIdentifier: APP
+        Type: GITHUB
+      SourceVersion: !Ref IWGithubRepoBranch
+      SecondarySources:
+        - Auth:
+            Type: OAUTH
+          Location: !Ref IWBaseLibGithubRepo
+          GitSubmodulesConfig:
+            FetchSubmodules: false
+          SourceIdentifier: "UI_BASE"
+          Type: GITHUB
+      SecondarySourceVersions:
+        - SourceIdentifier: "UI_BASE"
+          SourceVersion: !Ref IWBaseLibGithubRepoBranch
+      ServiceRole: !Ref IWCodeBuildServiceRole
+      TimeoutInMinutes: 15
+
+  #
+  # Cloud Front
+  #
+
+  IWCloudFrontCloudFrontOriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    DependsOn:
+      - IWCloudFrontBucket
+    Properties: 
+      OriginAccessControlConfig:
+        Description: !Sub Default origin access control for ${AWS::StackName} in ${AWS::Region}
+        Name: !Sub "ui-origin-access-control-${AWS::Region}-${AWS::StackName}"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  IWCloudFrontCloudFrontDistribution:
+    #checkov:skip=CKV_AWS_68: "For demo purposes and to reduce cost, no WAF is configured"
+    Type: 'AWS::CloudFront::Distribution'
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties:
+      DistributionConfig: 
+          Aliases:
+            - !Ref IWCloudFrontDomain
+          CustomErrorResponses:
+            - ErrorCode: 404
+              ResponseCode: 200
+              ResponsePagePath: /index.html
+            - ErrorCode: 403
+              ResponseCode: 200
+              ResponsePagePath: /index.html
+          DefaultRootObject: index.html
+          Enabled: true
+          HttpVersion: http2
+          Origins:
+            - DomainName: !GetAtt IWCloudFrontBucket.RegionalDomainName
+              Id: !Sub "ui-origin-${AWS::Region}-${AWS::StackName}"
+              OriginAccessControlId: !GetAtt IWCloudFrontCloudFrontOriginAccessControl.Id
+              S3OriginConfig: {}
+            - DomainName: !Ref IWCloudFrontAPIDomain
+              Id: !Sub "ep-origin-${AWS::Region}-${AWS::StackName}"
+              CustomOriginConfig:
+                HTTPPort: 80
+                HTTPSPort: 443
+                OriginProtocolPolicy: https-only
+                OriginSSLProtocols: 
+                - TLSv1.2
+                OriginReadTimeout: 180
+          DefaultCacheBehavior:
+            AllowedMethods:
+              - GET
+              - HEAD
+              - OPTIONS
+              - PUT
+              - POST
+              - PATCH
+              - DELETE
+            TargetOriginId: !Sub "ep-origin-${AWS::Region}-${AWS::StackName}"
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad # Disabled
+            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac # AllViewer except host header
+            ResponseHeadersPolicyId: eaab4381-ed33-4a86-88ca-d9558dc6cd63 # CORS with preflight and security headers
+            ViewerProtocolPolicy: redirect-to-https
+          CacheBehaviors:
+            - PathPattern: /index.html # HTML
+              Compress: true
+              AllowedMethods:
+              - GET
+              - HEAD
+              - OPTIONS
+              TargetOriginId: !Sub "ui-origin-${AWS::Region}-${AWS::StackName}"
+              CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6 # CachingOptimized
+              OriginRequestPolicyId: 88a5eaf4-2fd4-4709-b370-b4c650ea3fcf # CORS-S3Origin
+              ResponseHeadersPolicyId: 67f7725c-6f97-4210-82d7-5512b31e9d03 # SecurityHeadersPolicy
+              ViewerProtocolPolicy: redirect-to-https
+            - PathPattern: /index.*.css # CSS
+              Compress: true
+              AllowedMethods:
+              - GET
+              - HEAD
+              - OPTIONS
+              TargetOriginId: !Sub "ui-origin-${AWS::Region}-${AWS::StackName}"
+              CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6 # CachingOptimized
+              OriginRequestPolicyId: 88a5eaf4-2fd4-4709-b370-b4c650ea3fcf # CORS-S3Origin
+              ResponseHeadersPolicyId: 67f7725c-6f97-4210-82d7-5512b31e9d03 # SecurityHeadersPolicy
+              ViewerProtocolPolicy: redirect-to-https
+            - PathPattern: /index.bundle.js # Javascript
+              Compress: true
+              AllowedMethods:
+              - GET
+              - HEAD
+              - OPTIONS
+              TargetOriginId: !Sub "ui-origin-${AWS::Region}-${AWS::StackName}"
+              CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6 # CachingOptimized
+              OriginRequestPolicyId: 88a5eaf4-2fd4-4709-b370-b4c650ea3fcf # CORS-S3Origin
+              ResponseHeadersPolicyId: 67f7725c-6f97-4210-82d7-5512b31e9d03 # SecurityHeadersPolicy
+              ViewerProtocolPolicy: redirect-to-https
+            - PathPattern: /fonts/* # Fonts
+              Compress: true
+              AllowedMethods:
+              - GET
+              - HEAD
+              - OPTIONS
+              TargetOriginId: !Sub "ui-origin-${AWS::Region}-${AWS::StackName}"
+              CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6 # CachingOptimized
+              OriginRequestPolicyId: 88a5eaf4-2fd4-4709-b370-b4c650ea3fcf # CORS-S3Origin
+              ResponseHeadersPolicyId: 67f7725c-6f97-4210-82d7-5512b31e9d03 # SecurityHeadersPolicy
+              ViewerProtocolPolicy: redirect-to-https
+            - PathPattern: /img/* # Images
+              Compress: true
+              AllowedMethods:
+              - GET
+              - HEAD
+              - OPTIONS
+              TargetOriginId: !Sub "ui-origin-${AWS::Region}-${AWS::StackName}"
+              CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6 # CachingOptimized
+              OriginRequestPolicyId: 88a5eaf4-2fd4-4709-b370-b4c650ea3fcf # CORS-S3Origin
+              ResponseHeadersPolicyId: 67f7725c-6f97-4210-82d7-5512b31e9d03 # SecurityHeadersPolicy
+              ViewerProtocolPolicy: redirect-to-https
+          Logging:
+            Bucket: !GetAtt IWCloudFrontLogsBucket.RegionalDomainName
+            Prefix: !Sub "ui-origin-${AWS::Region}-${AWS::StackName}"
+          ViewerCertificate:
+            AcmCertificateArn: !Ref IWCloudFrontDomainCertARN
+            SslSupportMethod: sni-only
+            MinimumProtocolVersion: 'TLSv1.2_2021'
+          PriceClass: PriceClass_100
+
+  #
+  # Policies
+  #
+
+  IWCodeBuildServicePolicy:
+    Type: AWS::IAM::Policy
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      PolicyDocument:
+        Statement:
+        - Action:
+          - logs:CreateLogGroup
+          - logs:CreateLogStream
+          - logs:PutLogEvents
+          Effect: Allow
+          Resource: '*' # Log group access?
+        - Action:
+          - secretsmanager:GetSecretValue
+          Effect: Allow
+          Resource: 
+            - !Ref IWCommandLineUserAccessKeyValue
+            - !Ref IWCommandLineUserAccessKeySecret
+            - !Ref IWCodeBuildProjectEnvSecret
+        - Action:
+          - s3:GetObject*
+          - s3:PutObject*
+          - s3:ListBucket*
+          Effect: Allow
+          Resource:
+          - !Sub ${IWCodeBuildArtifactBucket.Arn}
+          - !Sub ${IWCodeBuildArtifactBucket.Arn}/*
+          - !Sub ${IWCodeBuildCacheBucket.Arn}
+          - !Sub ${IWCodeBuildCacheBucket.Arn}/*
+          - !Sub ${IWCodeBuildLogsBucket.Arn}
+          - !Sub ${IWCodeBuildLogsBucket.Arn}/*
+        - Action:
+          - kms:DescribeKey
+          - kms:Decrypt
+          - kms:Encrypt
+          - kms:GenerateDataKey
+          Effect: Allow
+          Resource: "*" # Specific bucket? Specific key access?
+      PolicyName: !Sub "IWCodeBuildServiceRolePolicy-${AWS::Region}-${AWS::StackName}"
+      Roles:
+      - !Ref IWCodeBuildServiceRole
+
+  IWCodeBuildArtifactBucketPolicy:
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref IWCodeBuildArtifactBucket
+      PolicyDocument:
+        Id: !Sub "IWArtifactBucketFullAccessForCodeBuild-${AWS::Region}-${AWS::StackName}"
+        Version: 2012-10-17
+        Statement:
+        - Action:
+          - s3:DeleteObject*
+          - s3:GetObject*
+          - s3:PutObject*
+          - s3:ListBucket*
+          - s3:GetBucketAcl
+          - s3:GetBucketLocation
+          Effect: Allow
+          Principal:
+            Service: codebuild.amazonaws.com
+          Resource:
+          - !Sub ${IWCodeBuildArtifactBucket.Arn}
+          - !Sub ${IWCodeBuildArtifactBucket.Arn}/*
+
+  IWCodeBuildCacheBucketPolicy:
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref IWCodeBuildCacheBucket
+      PolicyDocument:
+        Id: !Sub "IWCacheBucketFullAccessForCodeBuild-${AWS::Region}-${AWS::StackName}"
+        Version: 2012-10-17
+        Statement:
+        - Action:
+          - s3:DeleteObject*
+          - s3:GetObject*
+          - s3:PutObject*
+          - s3:ListBucket*
+          - s3:GetBucketAcl
+          - s3:GetBucketLocation
+          Effect: Allow
+          Principal:
+            Service: codebuild.amazonaws.com
+          Resource:
+          - !Sub ${IWCodeBuildCacheBucket.Arn}
+          - !Sub ${IWCodeBuildCacheBucket.Arn}/*
+
+  IWCodeBuildLogsBucketPolicy:
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref IWCodeBuildLogsBucket
+      PolicyDocument:
+        Id: !Sub "IWLogsBucketFullAccessForCodeBuild-${AWS::Region}-${AWS::StackName}"
+        Version: 2012-10-17
+        Statement:
+        - Action:
+          - s3:DeleteObject*
+          - s3:GetObject*
+          - s3:PutObject*
+          - s3:ListBucket*
+          - s3:GetBucketAcl
+          - s3:GetBucketLocation
+          Effect: Allow
+          Principal:
+            Service: codebuild.amazonaws.com
+          Resource:
+          - !Sub ${IWCodeBuildLogsBucket.Arn}
+          - !Sub ${IWCodeBuildLogsBucket.Arn}/*
+
+  IWCloudFrontBucketPolicy:
+    Type: 'AWS::S3::BucketPolicy'
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      Bucket: !Ref IWCloudFrontBucket
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+            - s3:GetObject*
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${IWCloudFrontCloudFrontDistribution}
+            Effect: Allow
+            Resource:
+            - !Sub ${IWCloudFrontBucket.Arn}/*
+            Principal:
+              Service: cloudfront.amazonaws.com
+          - Action:
+            - s3:GetObject*
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${IWCloudFrontCloudFrontDistribution}
+            Effect: Allow
+            Resource:
+            - !Sub ${IWCloudFrontBucket.Arn}/*
+            Principal:
+              Service: cloudfront.amazonaws.com
+
+  IWCommandLineUserPolicy:
+    Type: AWS::IAM::UserPolicy
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      PolicyName: !Sub "IWCLineForCodeBuildAccessPolicy-${AWS::Region}-${AWS::StackName}"
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+        - Action:
+          - sts:GetServiceBearerToken
+          Effect: Allow
+          Resource: "*"
+        - Action:
+          - s3:DeleteObject*
+          - s3:GetObject*
+          - s3:PutObject*
+          - s3:ListBucket*
+          - s3:GetBucketAcl
+          - s3:GetBucketLocation
+          Effect: Allow
+          Resource:
+          - !Sub ${IWCloudFrontBucket.Arn}
+          - !Sub ${IWCloudFrontBucket.Arn}/*
+        - Action: 
+          - cloudfront:CreateInvalidation
+          - cloudfront:GetInvalidation
+          Effect: Allow
+          Resource:
+          - !Sub arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${IWCloudFrontCloudFrontDistribution}
+      UserName: !Ref IWCommandLineUser
+
+Outputs:
+  IWEnvFile:
+    Value: !Ref IWCodeBuildProjectEnvSecret
+
