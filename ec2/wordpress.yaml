@@ -1,4 +1,4 @@
-AWSTemplateFormatVersion: '2010-09-09'
+AWSTemplateFormatVersion: 2010-09-09
 Parameters:
   ECConnectInstanceIP:
     Description: EC2 Connect Instance service IP in region
@@ -12,12 +12,10 @@ Parameters:
   IWAMIPrivateKeyName:
     Description: Private Key Name
     Type: String
-  IWAMIID:
+  IWImageId:
     Description: AMI ID
-    Type: String
-  IWVPCID:
-    Description: VPC ID
-    Type: String
+    Default: ami-090c20c6457e1fd80
+    Type: AWS::EC2::Image::Id
 Resources:
 
   #
@@ -26,9 +24,7 @@ Resources:
   IWWebSecurityGroup:
     Type: 'AWS::EC2::SecurityGroup'
     Properties:
-      VpcId:
-        Ref: IWVPCID
-      GroupName: !Sub "${AWS::StackName}-${AWS::Region}a-web.sg"
+      GroupName: !Sub "web.${AWS::Region}-${AWS::StackName}.sg"
       GroupDescription: HTTP & HTTPS access
       SecurityGroupIngress:
         - CidrIp: 0.0.0.0/0
@@ -43,14 +39,12 @@ Resources:
           Description: HTTPS
       Tags:
         - Key: Name
-          Value: !Sub "${AWS::StackName}-${AWS::Region}a-web.sg"
+          Value: !Sub "web.${AWS::Region}-${AWS::StackName}.sg"
 
-  IWShellSecurityGroup:
+  IWEC2ConnectSecurityGroup:
     Type: 'AWS::EC2::SecurityGroup'
     Properties:
-      VpcId:
-        Ref: IWVPCID
-      GroupName: !Sub "${AWS::StackName}-${AWS::Region}a-ssh.sg"
+      GroupName: !Sub "ec2-connect.${AWS::Region}-${AWS::StackName}.sg"
       GroupDescription: SSH access
       SecurityGroupIngress:
         - CidrIp: !Ref ECConnectInstanceIP
@@ -60,7 +54,7 @@ Resources:
           Description: SSH
       Tags:
         - Key: Name
-          Value: !Sub "${AWS::StackName}-${AWS::Region}a-ssh.sg"
+          Value: !Sub "ec2-connect.${AWS::Region}-${AWS::StackName}.sg"
 
   #
   # Instance
@@ -68,16 +62,16 @@ Resources:
   IWHomepageInstance:
     Type: AWS::EC2::Instance
     Properties:
-      ImageId: !Ref IWAMIID
+      ImageId: !Ref IWImageId
       InstanceType: t3.micro
       KeyName: 
         Ref: IWAMIPrivateKeyName
       SecurityGroupIds: 
         - !GetAtt IWWebSecurityGroup.GroupId
-        - !GetAtt IWShellSecurityGroup.GroupId
+        - !GetAtt IWEC2ConnectSecurityGroup.GroupId
       Tags:
         - Key: Name
-          Value: !Sub "${AWS::StackName}-${AWS::Region}a-wp-site"
+          Value: !Sub "ec2-wp-${AWS::Region}-${AWS::StackName}"
       UserData:
         Fn::Base64: |
           #!/bin/bash -xe
@@ -99,7 +93,7 @@ Resources:
       InstanceId: !Ref IWHomepageInstance
       Tags:
         - Key: Name
-          Value: !Sub "${AWS::StackName}-${AWS::Region}a-eip"
+          Value: !Sub "ec2-wp-eip-${AWS::Region}-${AWS::StackName}"
 
   #
   # Domain name
@@ -109,7 +103,6 @@ Resources:
     DependsOn:
          - IWHomepageElasticIP
     Properties:
-      # HostedZoneName: !Ref CompanyHostedZoneName
       HostedZoneId: !Ref IWHostedZoneId
       RecordSets:
         - Name: !Ref IWHomepageDomain
