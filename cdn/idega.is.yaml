@@ -177,7 +177,7 @@ Resources:
   BucketPolicy:
     Type: 'AWS::S3::BucketPolicy'
     DeletionPolicy: Delete
-    UpdateReplacePolicy: Retain
+    UpdateReplacePolicy: Delete
     Properties:
       Bucket: !Ref ProductBucket
       PolicyDocument:
