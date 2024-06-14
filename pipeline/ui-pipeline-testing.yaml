@@ -211,6 +211,15 @@ Resources:
           SourceVersion: !Ref IWBaseLibGithubRepoBranch
       ServiceRole: !Ref IWCodeBuildServiceRole
       TimeoutInMinutes: 15
+      Triggers:
+        Webhook: true
+        FilterGroups:
+          - - Type: EVENT
+              Pattern: PUSH
+              ExcludeMatchedPattern: false
+            - Type: HEAD_REF
+              Pattern: !Sub ^refs/heads/${IWGithubRepoBranch}
+              ExcludeMatchedPattern: false
 
   #
   # Cloud Front
