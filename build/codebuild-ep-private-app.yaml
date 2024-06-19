@@ -6,6 +6,9 @@ Parameters:
   IWGithubRepoBranch:
     Description: Branch name in module group
     Type: String
+  IWModulesGithubRepoBranch:
+    Description: Branch name in module group
+    Type: String
 
   IWMavenSettingsPathInS3:
     Description: Path where Maven setting file is placed
@@ -190,15 +193,15 @@ Resources:
           Type: GITHUB
       SecondarySourceVersions:
         - SourceIdentifier: "PLATFORM"
-          SourceVersion: !Ref IWGithubRepoBranch
+          SourceVersion: !Ref IWModulesGithubRepoBranch
         - SourceIdentifier: "ADDON"
-          SourceVersion: !Ref IWGithubRepoBranch
+          SourceVersion: !Ref IWModulesGithubRepoBranch
         - SourceIdentifier: "EGOV"
-          SourceVersion: !Ref IWGithubRepoBranch
+          SourceVersion: !Ref IWModulesGithubRepoBranch
         - SourceIdentifier: "PRIVATE"
-          SourceVersion: !Ref IWGithubRepoBranch
+          SourceVersion: !Ref IWModulesGithubRepoBranch
         - SourceIdentifier: "WEBAPP"
-          SourceVersion: !Ref IWGithubRepoBranch
+          SourceVersion: !Ref IWModulesGithubRepoBranch
       ServiceRole: !Ref IWCodeBuildServiceRole
       TimeoutInMinutes: 30
       Triggers:
