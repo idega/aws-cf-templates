@@ -30,37 +30,35 @@ phases:
     on-failure: ABORT
     commands:
       - export readonly CODEARTIFACT_AUTH_TOKEN=$(aws codeartifact get-authorization-token --domain $IW_CODE_ART_DOMAIN --domain-owner $IW_CODE_ART_DOMAIN_OWNER --query authorizationToken --output text --region $IW_CODE_ART_DOMAIN_REGION)
-      - git pull
-      - git checkout BRANCH_PLATFORM_5
       - cd $CODEBUILD_SRC_DIR_PLATFORM
-      - git submodule update --init --recursive --remote
-      - git pull
       - git checkout BRANCH_PLATFORM_5
+      - git pull
+      - git submodule update --init --recursive --remote
       - git submodule foreach git checkout BRANCH_PLATFORM_5
       - git submodule foreach git pull
       - cd $CODEBUILD_SRC_DIR_ADDON
-      - git submodule update --init --recursive --remote
-      - git pull
       - git checkout BRANCH_PLATFORM_5
+      - git pull
+      - git submodule update --init --recursive --remote
       - git submodule foreach git checkout BRANCH_PLATFORM_5
       - git submodule foreach git pull
       - cd $CODEBUILD_SRC_DIR_EGOV
-      - git submodule update --init --recursive --remote
-      - git pull
       - git checkout BRANCH_PLATFORM_5
+      - git pull
+      - git submodule update --init --recursive --remote
       - git submodule foreach git checkout BRANCH_PLATFORM_5
       - git submodule foreach git pull
       - cd $CODEBUILD_SRC_DIR_PRIVATE
-      - git submodule update --init --recursive --remote
-      - git pull
       - git checkout BRANCH_PLATFORM_5
+      - git pull
+      - git submodule update --init --recursive --remote
       - git submodule foreach git checkout BRANCH_PLATFORM_5
       - git submodule foreach git pull
       - cd $CODEBUILD_SRC_DIR_PRIVATE/com.idega.member.api
       - git checkout for_react
       - cd $CODEBUILD_SRC_DIR_WEBAPP
-      - git pull
       - git checkout BRANCH_PLATFORM_5
+      - git pull
   build:
     run-as: root
     on-failure: ABORT

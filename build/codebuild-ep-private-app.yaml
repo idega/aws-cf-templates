@@ -112,7 +112,7 @@ Resources:
         Packaging: NONE
         Type: S3
       BadgeEnabled: true
-      Description: !Sub "A build project for ePlatform application defined in stack ${AWS::StackName} in ${AWS::Region} region"
+      Description: !Sub "${IWGithubRepoBranch}"
       Environment:
         ComputeType: BUILD_GENERAL1_LARGE
         EnvironmentVariables:
