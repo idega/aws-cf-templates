@@ -54,8 +54,8 @@ phases:
       - git submodule update --init --recursive --remote
       - git submodule foreach git checkout BRANCH_PLATFORM_5
       - git submodule foreach git pull
-      - cd $CODEBUILD_SRC_DIR_PRIVATE/com.idega.member.api
-      - git checkout for_react
+      - cd $CODEBUILD_SRC_DIR_PRIVATE/com.idega.camunda
+      - git checkout field-attribute
       - cd $CODEBUILD_SRC_DIR_WEBAPP
       - git checkout BRANCH_PLATFORM_5
       - git pull
