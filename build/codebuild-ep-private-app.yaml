@@ -214,6 +214,18 @@ Resources:
               Pattern: !Sub ^refs/heads/${IWGithubRepoBranch}
               ExcludeMatchedPattern: false
 
+  IWCodeBuildProjectDailyBuildRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: !Sub "${IWGithubRepoBranch}"
+      Name: !Sub "cb-daily-${AWS::Region}-${AWS::StackName}"
+      ScheduleExpression: "cron(0 0 * * ? *)"
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt IWCodeBuildProject.Arn 
+          RoleArn: !GetAtt IWCodeBuildServiceRole.Arn 
+          Id: !Ref IWCodeBuildProject
+
   #
   # Policies
   #
