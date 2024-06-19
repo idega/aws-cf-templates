@@ -176,6 +176,13 @@ Resources:
           Type: GITHUB
         - Auth:
             Type: OAUTH
+          Location: "https://github.com/idega/com.idega.block.private.git"
+          GitSubmodulesConfig:
+            FetchSubmodules: false
+          SourceIdentifier: "PRIVATE"
+          Type: GITHUB
+        - Auth:
+            Type: OAUTH
           Location: "https://github.com/idega/com.idega.maven.webapp.git"
           GitSubmodulesConfig:
             FetchSubmodules: false
@@ -188,10 +195,12 @@ Resources:
           SourceVersion: !Ref IWGithubRepoBranch
         - SourceIdentifier: "EGOV"
           SourceVersion: !Ref IWGithubRepoBranch
+        - SourceIdentifier: "PRIVATE"
+          SourceVersion: !Ref IWGithubRepoBranch
         - SourceIdentifier: "WEBAPP"
           SourceVersion: !Ref IWGithubRepoBranch
       ServiceRole: !Ref IWCodeBuildServiceRole
-      TimeoutInMinutes: 15
+      TimeoutInMinutes: 30
       Triggers:
         Webhook: true
         FilterGroups:
