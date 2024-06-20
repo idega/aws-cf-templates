@@ -47,6 +47,13 @@ Resources:
     Properties:
       BucketName: !Sub "cb-artifact-${AWS::Region}-${AWS::StackName}"
 
+  IWCodeBuildCacheBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub "cb-cache-${AWS::Region}-${AWS::StackName}"
+
   IWCodeBuildLogsBucket:
     Type: AWS::S3::Bucket
     DeletionPolicy: Delete
@@ -115,6 +122,9 @@ Resources:
         Packaging: NONE
         Type: S3
       BadgeEnabled: true
+      Cache:
+        Location: !Ref IWCodeBuildCacheBucket
+        Type: S3
       Description: !Sub "${IWGithubRepoBranch}"
       Environment:
         ComputeType: BUILD_GENERAL1_LARGE
@@ -254,6 +264,30 @@ Resources:
           - !Sub ${IWCodeBuildArtifactBucket.Arn}
           - !Sub ${IWCodeBuildArtifactBucket.Arn}/*
 
+  IWCodeBuildCacheBucketPolicy:
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref IWCodeBuildCacheBucket
+      PolicyDocument:
+        Id: !Sub "IWCacheBucketFullAccessForCodeBuild-${AWS::Region}-${AWS::StackName}"
+        Version: 2012-10-17
+        Statement:
+        - Action:
+          - s3:DeleteObject*
+          - s3:GetObject*
+          - s3:PutObject*
+          - s3:ListBucket*
+          - s3:GetBucketAcl
+          - s3:GetBucketLocation
+          Effect: Allow
+          Principal:
+            Service: codebuild.amazonaws.com
+          Resource:
+          - !Sub ${IWCodeBuildCacheBucket.Arn}
+          - !Sub ${IWCodeBuildCacheBucket.Arn}/*
+
   IWCodeBuildLogsBucketPolicy:
     DeletionPolicy: Delete
     UpdateReplacePolicy: Retain
@@ -305,6 +339,10 @@ Resources:
           Resource:
           - !Sub ${IWCodeBuildArtifactBucket.Arn}
           - !Sub ${IWCodeBuildArtifactBucket.Arn}/*
+          - !Sub ${IWCodeBuildCacheBucket.Arn}
+          - !Sub ${IWCodeBuildCacheBucket.Arn}/*
+          - !Sub ${IWCodeBuildLogsBucket.Arn}
+          - !Sub ${IWCodeBuildLogsBucket.Arn}/*
         - Action:
           - kms:DescribeKey
           - kms:Decrypt
