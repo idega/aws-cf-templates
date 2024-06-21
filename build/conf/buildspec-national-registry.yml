@@ -1,0 +1,34 @@
+version: 0.2
+
+run-as: root
+
+env:
+  shell: bash
+  secrets-manager:
+    ENV_FILE_CONTENT: ${IW_AWS_ENV_SECRET_ARN}
+batch:
+  fast-fail: true
+phases:
+  install:
+    run-as: root
+    on-failure: ABORT
+    commands:
+      - yum install -y sshpass
+      - cd $CODEBUILD_SRC_DIR
+      - jq '.' <<< $ENV_FILE_CONTENT | jq -r "to_entries|map(\"\(.key)=\(.value|tostring)\")|.[]" | cat > env.sh
+      - chmod +x env.sh
+  build:
+    run-as: root
+    on-failure: ABORT
+    commands:
+      - cd $CODEBUILD_SRC_DIR
+      - source env.sh
+      - export $(cut -d= -f1 env.sh)
+      - mkdir -p build/$(date +%Y-%m-%d)
+      - sshpass -p $IW_NR_PASSWORD sftp -vvv -o StrictHostKeyChecking=no -o Ciphers=aes128-cbc,3des-cbc,aes192-cbc,aes256-cbc -P $IW_NR_PORT $IW_NR_USERNAME@$IW_NR_HOST <<< $'get MAN*' 
+      - for iw_filename in MAN*; do iconv --from-code=MS-ANSI --to-code=UTF-8 $iw_filename > "${iw_filename%.*}.utf8.txt"; done;
+      - mv MAN* build/$(date +%Y-%m-%d)/
+artifacts:
+  files:
+    - '**/*'
+  base-directory: 'build'

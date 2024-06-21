@@ -1,0 +1,224 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  IWGithubRepo:
+    Description: Github url to module group
+    Type: String
+  IWGithubRepoBranch:
+    Description: Branch name in module group
+    Type: String
+Resources:
+  IWCodeBuildArtifactBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub "cb-artifact-${AWS::Region}-${AWS::StackName}"
+
+  IWCodeBuildLogsBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub "cb-logs-${AWS::Region}-${AWS::StackName}"
+
+  IWCodeBuildProjectEnvSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: !Sub "An .env file secrets for code build project ${AWS::StackName} in ${AWS::Region} that will be installed as environmental variables"
+      Name: !Sub "cb-project-env-secret-${AWS::Region}-${AWS::StackName}"
+
+  IWCodeBuildServiceRole:
+    Type: AWS::IAM::Role
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Action: sts:AssumeRole
+          Effect: Allow
+          Principal:
+            Service: codebuild.amazonaws.com
+      Description: !Sub "Allows access to required resources and actions for CodeBuild project ${AWS::StackName} in ${AWS::Region}"
+      Path: /
+      RoleName: !Sub "IWServiceRoleForCodeBuild-${AWS::Region}-${AWS::StackName}"
+
+  IWEventsBridgeServiceRole:
+    Type: AWS::IAM::Role
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Action: sts:AssumeRole
+          Effect: Allow
+          Principal:
+            Service: events.amazonaws.com
+      Path: /
+      RoleName: !Sub "IWServiceRoleForEventBridge-${AWS::Region}-${AWS::StackName}"
+
+  IWCodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    DependsOn:
+      - IWCodeBuildServicePolicy
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      Artifacts:
+        EncryptionDisabled: true
+        Location: !Ref IWCodeBuildArtifactBucket
+        Packaging: NONE
+        Type: S3 
+      BadgeEnabled: true
+      Description: !Sub "A build project for UI application defined in stack ${AWS::StackName} in ${AWS::Region} region"
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        EnvironmentVariables:
+          - Name: IW_AWS_ENV_SECRET_ARN
+            Value: !Ref IWCodeBuildProjectEnvSecret
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:5.0
+        PrivilegedMode: true
+        Type: LINUX_CONTAINER
+      LogsConfig:
+        CloudWatchLogs:
+          GroupName: !Sub "cb-project-${AWS::Region}-${AWS::StackName}"
+          Status: ENABLED
+        S3Logs:
+          Location: !Ref IWCodeBuildLogsBucket
+          Status: ENABLED
+      Name: !Sub "cb-project-${AWS::Region}-${AWS::StackName}"
+      Source:
+        Auth:
+          Type: OAUTH
+        GitSubmodulesConfig:
+          FetchSubmodules: false
+        Location: !Ref IWGithubRepo
+        SourceIdentifier: APP
+        Type: GITHUB
+      SourceVersion: !Ref IWGithubRepoBranch
+      ServiceRole: !Ref IWCodeBuildServiceRole
+      TimeoutInMinutes: 15
+
+  IWCodeBuildProjectDailyBuildRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: !Sub "${IWGithubRepoBranch}"
+      Name: !Sub "cb-daily-${AWS::Region}-${AWS::StackName}"
+      ScheduleExpression: "cron(0 0 * * ? *)"
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt IWCodeBuildProject.Arn 
+          RoleArn: !GetAtt IWEventsBridgeServiceRole.Arn 
+          Id: !Ref IWCodeBuildProject
+
+  #
+  # Policies
+  #
+
+  IWCodeBuildServicePolicy:
+    Type: AWS::IAM::Policy
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      PolicyDocument:
+        Statement:
+        - Action:
+          - logs:CreateLogGroup
+          - logs:CreateLogStream
+          - logs:PutLogEvents
+          Effect: Allow
+          Resource: '*' # Log group access?
+        - Action:
+          - secretsmanager:GetSecretValue
+          Effect: Allow
+          Resource:
+            - !Ref IWCodeBuildProjectEnvSecret
+        - Action:
+          - s3:GetObject*
+          - s3:PutObject*
+          - s3:ListBucket*
+          Effect: Allow
+          Resource:
+          - !Sub ${IWCodeBuildArtifactBucket.Arn}
+          - !Sub ${IWCodeBuildArtifactBucket.Arn}/*
+          - !Sub ${IWCodeBuildLogsBucket.Arn}
+          - !Sub ${IWCodeBuildLogsBucket.Arn}/*
+        - Action:
+          - kms:DescribeKey
+          - kms:Decrypt
+          - kms:Encrypt
+          - kms:GenerateDataKey
+          Effect: Allow
+          Resource: "*" # Specific bucket? Specific key access?
+      PolicyName: !Sub "IWCodeBuildServiceRolePolicy-${AWS::Region}-${AWS::StackName}"
+      Roles:
+      - !Ref IWCodeBuildServiceRole
+
+  IWEventsBridgeServiceRolePolicy:
+    Type: AWS::IAM::Policy
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      PolicyDocument:
+        Statement:
+        - Action:
+          - codebuild:StartBuild
+          Effect: Allow
+          Resource: !GetAtt IWCodeBuildProject.Arn
+      PolicyName: !Sub "IWEventsBridgeServiceRolePolicy-${AWS::Region}-${AWS::StackName}"
+      Roles:
+      - !Ref IWEventsBridgeServiceRole
+
+  IWCodeBuildArtifactBucketPolicy:
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref IWCodeBuildArtifactBucket
+      PolicyDocument:
+        Id: !Sub "IWArtifactBucketFullAccessForCodeBuild-${AWS::Region}-${AWS::StackName}"
+        Version: 2012-10-17
+        Statement:
+        - Action:
+          - s3:DeleteObject*
+          - s3:GetObject*
+          - s3:PutObject*
+          - s3:ListBucket*
+          - s3:GetBucketAcl
+          - s3:GetBucketLocation
+          Effect: Allow
+          Principal:
+            Service: codebuild.amazonaws.com
+          Resource:
+          - !Sub ${IWCodeBuildArtifactBucket.Arn}
+          - !Sub ${IWCodeBuildArtifactBucket.Arn}/*
+
+  IWCodeBuildLogsBucketPolicy:
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref IWCodeBuildLogsBucket
+      PolicyDocument:
+        Id: !Sub "IWLogsBucketFullAccessForCodeBuild-${AWS::Region}-${AWS::StackName}"
+        Version: 2012-10-17
+        Statement:
+        - Action:
+          - s3:DeleteObject*
+          - s3:GetObject*
+          - s3:PutObject*
+          - s3:ListBucket*
+          - s3:GetBucketAcl
+          - s3:GetBucketLocation
+          Effect: Allow
+          Principal:
+            Service: codebuild.amazonaws.com
+          Resource:
+          - !Sub ${IWCodeBuildLogsBucket.Arn}
+          - !Sub ${IWCodeBuildLogsBucket.Arn}/*
+
+Outputs:
+  IWEnvFile:
+    Value: !Ref IWCodeBuildProjectEnvSecret
+
