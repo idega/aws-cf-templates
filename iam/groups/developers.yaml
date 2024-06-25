@@ -1,0 +1,59 @@
+AWSTemplateFormatVersion: 2010-09-09
+Resources:
+  IWDevelopersGroup:
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Type: AWS::IAM::Group
+    Properties:
+      GroupName: !Sub ${AWS::Region}-${AWS::StackName}
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEC2ReadOnlyAccess
+        - arn:aws:iam::aws:policy/AWSCodeArtifactReadOnlyAccess
+        - arn:aws:iam::aws:policy/AWSCodeBuildDeveloperAccess
+        - arn:aws:iam::aws:policy/EC2InstanceConnect
+        - arn:aws:iam::aws:policy/SecretsManagerReadWrite
+      Policies:
+        - PolicyName: !Sub IWDevelopersAccessPolicyForS3-${AWS::Region}-${AWS::StackName}
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+            - Action:
+              - s3:ListAllMyBuckets
+              Effect: Allow
+              Resource:
+              - !Sub arn:${AWS::Partition}:s3:::*
+            - Action:
+              - s3:Get*
+              - s3:Describe*
+              - s3:List*
+              - s3-object-lambda:Get*
+              - s3-object-lambda:List*
+              Effect: Allow
+              Resource: 
+              - !Sub arn:${AWS::Partition}:s3:::cb-*
+              - !Sub arn:${AWS::Partition}:s3:::cf-*
+              - !Sub arn:${AWS::Partition}:s3:::*.idega.org
+              - !Sub arn:${AWS::Partition}:s3:::*.idega.is
+        - PolicyName: !Sub IWDevelopersAccessPolicyForVPN-${AWS::Region}-${AWS::StackName}
+          PolicyDocument: 
+            Version: 2012-10-17
+            Statement:
+              - Action:
+                - ec2:DescribeVpnConnections
+                - ec2:DescribeClientVpnAuthorizationRules
+                - ec2:DescribeClientVpnConnections
+                - ec2:DescribeClientVpnEndpoints
+                - ec2:DescribeClientVpnTargetNetworks
+                - ec2:DescribeClientVpnRoutes
+                - ec2:DescribeVpcEndpointServices
+                - ec2:ExportClientVpnClientConfiguration
+                Effect: Allow
+                Resource: "*"
+        - PolicyName: !Sub IWDevelopersAccessPolicyForSSH-${AWS::Region}-${AWS::StackName}
+          PolicyDocument: 
+            Version: 2012-10-17
+            Statement:
+              - Action: 
+                - ec2-instance-connect:OpenTunnel
+                Effect: Allow
+                Resource: "*"
