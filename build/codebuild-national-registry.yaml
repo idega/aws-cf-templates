@@ -105,16 +105,41 @@ Resources:
     Properties:
       Description: !Sub "${IWGithubRepoBranch}"
       Name: !Sub "cb-daily-${AWS::Region}-${AWS::StackName}"
-      ScheduleExpression: "cron(0 0 * * ? *)"
+      ScheduleExpression: "cron(40 7 * * ? *)"
       State: ENABLED
       Targets:
         - Arn: !GetAtt IWCodeBuildProject.Arn 
           RoleArn: !GetAtt IWEventsBridgeServiceRole.Arn 
           Id: !Ref IWCodeBuildProject
-
   #
   # Policies
   #
+  IWCodeBuildArtifactBucketAccessGroup:
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Type: AWS::IAM::Group
+    Properties:
+      GroupName: !Sub cb-group-${AWS::Region}-${AWS::StackName}
+      Policies:
+        - PolicyName: !Sub IWArtifactBucketReadAccessForCodeBuild-${AWS::Region}-${AWS::StackName}
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+            - Action:
+              - s3:ListAllMyBuckets
+              Effect: Allow
+              Resource:
+              - !Sub arn:${AWS::Partition}:s3:::*
+            - Action:
+              - s3:Get*
+              - s3:Describe*
+              - s3:List*
+              - s3-object-lambda:Get*
+              - s3-object-lambda:List*
+              Effect: Allow
+              Resource: 
+              - !Sub ${IWCodeBuildArtifactBucket.Arn}
+              - !Sub ${IWCodeBuildArtifactBucket.Arn}/*
 
   IWCodeBuildServicePolicy:
     Type: AWS::IAM::Policy
