@@ -1,0 +1,272 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  IWAMIPrivateKeyName:
+    Description: Private Key Name
+    Type: String
+  IWAMIID:
+    Description: AMI ID
+    Type: String
+  IWSubnetId:
+    Description: Public subnet ID
+    Type: String
+  IWAvailabilityZone:
+    Description: AZ for volume
+    Type: String
+  IWVPCID:
+    Description: CIDR block for VPC network
+    Type: String
+  IWPrivateSubnetCIDR:
+    Description: CIDR block for VPC network
+    Type: String
+  ECConnectInstanceIP:
+    Description: EC2 Connect Instance service IP in region
+    Type: String
+  IWFTPUser:
+    Description: IW FTP user
+    Type: String
+  IWHostnames:
+    Description: Hostnames of other servers that needs to be backed up
+    Type: String
+Resources:
+
+  #
+  # CLI
+  #
+
+  IWCommandLineUser:
+    Type: AWS::IAM::User
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      UserName: !Sub "ec2-cli-user-${AWS::Region}-${AWS::StackName}"
+
+  IWCommandLineUserAccessKey:
+    Type: AWS::IAM::AccessKey
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      UserName: !Ref IWCommandLineUser
+      Serial: 2
+      Status: Active
+
+  IWCommandLineUserAccessKeyValue:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      Description: !Sub "An access key for code build project ${AWS::StackName} in ${AWS::Region}"
+      Name: !Sub "ec2-cli-access-key-${AWS::Region}-${AWS::StackName}"
+      SecretString: !Ref IWCommandLineUserAccessKey
+
+  IWCommandLineUserAccessKeySecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      Description: !Sub "An access secret for code build project ${AWS::StackName} in ${AWS::Region}"
+      Name: !Sub "ec2-cli-access-secret-${AWS::Region}-${AWS::StackName}"
+      SecretString: !GetAtt IWCommandLineUserAccessKey.SecretAccessKey
+
+  #
+  # Security groups
+  #
+
+  IWShellSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      VpcId:
+        Ref: IWVPCID
+      GroupName: !Sub "${AWS::Region}-${AWS::StackName}-ecic.sg"
+      GroupDescription: SSH access via AWS Cloud Connect
+      SecurityGroupIngress:
+        - CidrIp: !Ref ECConnectInstanceIP
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22
+          Description: SSH
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::Region}-${AWS::StackName}-ecic.sg"
+
+  IWVPNShellSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      VpcId:
+        Ref: IWVPCID
+      GroupName: !Sub "${AWS::Region}-${AWS::StackName}-ssh-vpn.sg"
+      GroupDescription: SSH access via VPN
+      SecurityGroupIngress:
+        - CidrIp: !Ref IWPrivateSubnetCIDR
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22
+          Description: SSH
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::Region}-${AWS::StackName}-ssh-vpn.sg"
+
+  IWBackupInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref IWAMIID
+      InstanceType: t3.micro
+      KeyName: 
+        Ref: IWAMIPrivateKeyName
+      SecurityGroupIds: 
+        - !GetAtt IWShellSecurityGroup.GroupId
+        - !GetAtt IWVPNShellSecurityGroup.GroupId
+      SubnetId: !Ref IWSubnetId
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-instance"
+      UserData:
+        Fn::Base64: 
+          !Sub | 
+            #!/bin/bash -xe
+
+            #
+            # Functions
+            #
+            function create_iw_service_user() {
+                local sftp_directory=/var/local/${IWFTPUser}/$1
+                local backup_directory=/var/local/${IWFTPUser}/$1/backup
+
+                # User
+                sudo useradd \
+                    --home-dir /opt/$1 \
+                    --shell /sbin/nologin $1
+
+                # Group
+                sudo usermod -aG ${IWFTPUser} $1
+
+                # Password
+                local password=$(date | base64)
+                echo $password | sudo passwd $1 --stdin
+                sudo chage -M 3650 $1 # STIG
+
+                # SSH access
+                sudo cp -r $HOME/.ssh /opt/$1/
+                sudo chown -R $1:$1 /opt/$1/.ssh
+                sudo restorecon -F -R /opt/$1/.ssh
+
+                # SFTP directory
+                sudo mkdir -p $backup_directory
+                sudo chown $1:${IWFTPUser} $backup_directory
+                sudo chown root:${IWFTPUser} $sftp_directory
+                sudo chmod -R o+rx $sftp_directory
+                sudo restorecon -F -R $sftp_directory
+            }
+
+            #
+            # Packages
+            #
+            sudo yum -y install epel-release
+            sudo yum -y install \
+                bc \
+                elinks \
+                firewalld \
+                gettext \
+                git \
+                htop \
+                openscap openscap-scanner openscap-utils \
+                scap-security-guide \
+                screen \
+                s3cmd \
+                awscli \
+                vim \
+                wget \
+                unzip
+
+            #
+            # Services
+            #
+            sudo systemctl enable firewalld
+            sudo systemctl restart firewalld
+
+            #
+            # Firewall 
+            #
+            sudo firewall-cmd --set-default-zone=drop
+            sudo firewall-cmd --add-service ssh
+            sudo firewall-cmd --add-service ssh --permanent
+
+            #
+            # PCI-DSS benchmark
+            #
+            sudo oscap xccdf eval \
+              --fetch-remote-resources \
+              --remediate \
+              --profile xccdf_org.ssgproject.content_profile_pci-dss \
+              --results pcidss-scan-results.xml \
+              /usr/share/xml/scap/ssg/content/ssg-almalinux9-ds.xml
+
+            # 
+            # EC2 Instance Connect
+            # Might need no additional access from anywhere else
+            # 
+            wget https://amazon-ec2-instance-connect-us-west-2.s3.us-west-2.amazonaws.com/latest/linux_amd64/ec2-instance-connect.rpm
+            wget https://amazon-ec2-instance-connect-us-west-2.s3.us-west-2.amazonaws.com/latest/linux_amd64/ec2-instance-connect-selinux.noarch.rpm
+            sudo yum install -y ec2-instance-connect.rpm
+            sudo yum install -y ec2-instance-connect-selinux.noarch.rpm
+
+            #
+            # Attaching disk
+            #
+            parted -s /dev/xvdb mklabel gpt
+            parted -s /dev/xvdb mkpart primary xfs 0% 100%
+            mkfs.xfs /dev/xvdb1
+
+
+            sudo parted -s /dev/nvme1n1 mklabel gpt
+            sudo parted -s /dev/nvme1n1 mkpart primary xfs 0% 100%
+            sudo mkfs.xfs /dev/nvme1n1p1
+
+            #
+            # Attaching disk
+            #
+            sudo mkdir -p /var/local/${IWFTPUser}/
+            sudo chown root:root /var/local/${IWFTPUser}/
+            sudo chmod o+rx /var/local/${IWFTPUser}/
+            sudo restorecon -F -R /var/local/${IWFTPUser}/
+            echo "UUID=$(blkid -o value -s UUID /dev/nvme1n1p1) /var/local/${IWFTPUser} xfs defaults 0 0" | sudo tee -a /etc/fstab
+
+            #
+            # SSHFS
+            #
+            sudo groupadd ${IWFTPUser}
+            sudo sed --in-place '/Subsystem/d' /etc/ssh/sshd_config
+            echo 'Subsystem ${IWFTPUser} internal-sftp'       | sudo tee -a /etc/ssh/sshd_config
+            echo 'Match Group ${IWFTPUser}'                   | sudo tee -a /etc/ssh/sshd_config
+            echo 'ChrootDirectory /var/local/${IWFTPUser}/%u' | sudo tee -a /etc/ssh/sshd_config
+            echo 'ForceCommand internal-sftp'                 | sudo tee -a /etc/ssh/sshd_config
+            sudo systemctl restart sshd
+
+            for iw_service_user_name in ${IWHostnames}; do 
+              create_iw_service_user $iw_service_user_name
+            done
+
+            #
+            # AWS Cli
+            #
+            aws configure set aws_access_key_id ${IWCommandLineUserAccessKey} 
+            aws configure set aws_secret_access_key ${IWCommandLineUserAccessKey.SecretAccessKey}
+
+  IWBackupColdVolume:
+    UpdateReplacePolicy: Retain
+    DeletionPolicy: Retain
+    Type: AWS::EC2::Volume
+    Properties:
+      AvailabilityZone: !Ref IWAvailabilityZone
+      Size: 1024
+      VolumeType: sc1
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-instance-cold-volume"
+  
+  IWBackupColdVolumeAttachment:
+    Type: AWS::EC2::VolumeAttachment
+    Properties:
+         VolumeId: !Ref IWBackupColdVolume
+         InstanceId: !Ref IWBackupInstance
+         Device: /dev/sde
+
