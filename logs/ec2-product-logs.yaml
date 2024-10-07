@@ -59,6 +59,27 @@ Resources:
     Properties: 
       LogGroupName: !Ref IWCloudWatchAgentTomcatLogGroup
       LogStreamName: Catalina
+  IWCloudWatchAgentSevereLogStream:
+    Type: AWS::Logs::LogStream
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties: 
+      LogGroupName: !Ref IWCloudWatchAgentTomcatLogGroup
+      LogStreamName: SEVERE
+  IWCloudWatchAgentWarningLogStream:
+    Type: AWS::Logs::LogStream
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties: 
+      LogGroupName: !Ref IWCloudWatchAgentTomcatLogGroup
+      LogStreamName: WARNING
+  IWCloudWatchAgentInfoLogStream:
+    Type: AWS::Logs::LogStream
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties: 
+      LogGroupName: !Ref IWCloudWatchAgentTomcatLogGroup
+      LogStreamName: INFO
 
 Outputs:
   IWNginxLogGroupARN:
