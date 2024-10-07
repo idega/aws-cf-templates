@@ -1,0 +1,79 @@
+AWSTemplateFormatVersion: 2010-09-09
+Transform: 'AWS::LanguageExtensions'
+Parameters:
+  IWCloudWatchLogGroupsStack:
+    Description: "A link to CloudFormation template defining Cloud Watch log groups"
+    Type: String
+  IWProductServiceNames:
+    Description: "A Tomcat services name of a product in server"
+    Type: CommaDelimitedList
+Resources:
+  #
+  # Log groups & streams for products
+  #
+  Fn::ForEach::IWLogGroups:
+  - IWProductServiceName
+  - !Ref IWProductServiceNames
+  - ${IWProductServiceName}:
+      Type: AWS::CloudFormation::Stack
+      DeletionPolicy: Delete
+      UpdateReplacePolicy: Retain
+      Properties:
+        TemplateURL: !Ref IWCloudWatchLogGroupsStack
+        Parameters:
+          IWProductServiceName: !Ref IWProductServiceName
+        Tags:
+        - Key: AWSRegion
+          Value: !Sub ${AWS::Region}
+
+  #
+  # Role for instance
+  #
+  IWCloudWatchAgentRole:
+    Type: AWS::IAM::Role
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties:
+      RoleName: !Sub IWCloudWatchRoleForEC2Agent-${AWS::Region}-${AWS::StackName}
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: !Sub /IW/${AWS::Region}/${AWS::StackName}/
+      Tags:
+        - Key: AWSRegion
+          Value: !Sub ${AWS::Region}
+  #
+  # Policies
+  #
+  Fn::ForEach::IWCloudWatchAgentRolePolicies:
+  - IWProductServiceName
+  - !Ref IWProductServiceNames
+  - IWCloudWatchAgentRolePolicyFor${IWProductServiceName}:
+      Type: AWS::IAM::RolePolicy
+      Properties:
+        PolicyName: !Sub IWCloudWatchAccessPolicyForEC2Agent-${AWS::Region}-${AWS::StackName}-${IWProductServiceName}
+        PolicyDocument:
+          Version: 2012-10-17
+          Statement:
+            - Action:
+              - logs:PutLogEvents
+              Effect: Allow
+              Resource: 
+              - !GetAtt [!Sub "${IWProductServiceName}", Outputs.IWNginxLogGroupARN ]
+              - !GetAtt [!Sub "${IWProductServiceName}", Outputs.IWTomcatLogGroupARN ]
+        RoleName: !Ref IWCloudWatchAgentRole
+  IWCloudWatchAgentRoleInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties:
+      InstanceProfileName: !Sub IWCloudWatchAgentLogsInstanceProfile-${AWS::Region}-${AWS::StackName}
+      Path: !Sub /IW/${AWS::Region}/${AWS::StackName}/
+      Roles:
+      - !Ref IWCloudWatchAgentRole

@@ -1,0 +1,73 @@
+AWSTemplateFormatVersion: 2010-09-09
+Parameters:
+  IWProductServiceName:
+    Description: "A Tomcat service name of a product in server"
+    Type: String
+Resources:
+
+  #
+  # Nginx
+  #
+  IWCloudWatchAgentNginxLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupClass: STANDARD
+      LogGroupName: !Sub ${AWS::StackName}-${AWS::Region}-${IWProductServiceName}-nginx
+      RetentionInDays: 365
+      Tags:
+        - Key: AWSRegion
+          Value: !Sub ${AWS::Region}
+        - Key: IWProductName
+          Value: !Sub ${IWProductServiceName}
+  IWCloudWatchAgentAccessLogStream:
+    Type: AWS::Logs::LogStream
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties: 
+      LogGroupName: !Ref IWCloudWatchAgentNginxLogGroup
+      LogStreamName: Access
+  IWCloudWatchAgentErrorLogStream:
+    Type: AWS::Logs::LogStream
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties: 
+      LogGroupName: !Ref IWCloudWatchAgentNginxLogGroup
+      LogStreamName: Error
+
+  #
+  # Tomcat
+  #
+  IWCloudWatchAgentTomcatLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupClass: STANDARD
+      LogGroupName: !Sub ${AWS::StackName}-${AWS::Region}-${IWProductServiceName}-tomcat
+      RetentionInDays: 365
+      Tags:
+        - Key: AWSRegion
+          Value: !Sub ${AWS::Region}
+        - Key: IWProductName
+          Value: !Sub ${IWProductServiceName}
+  IWCloudWatchAgentCatalinaLogStream:
+    Type: AWS::Logs::LogStream
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties: 
+      LogGroupName: !Ref IWCloudWatchAgentTomcatLogGroup
+      LogStreamName: Catalina
+
+Outputs:
+  IWNginxLogGroupARN:
+    Description: ARN for futher usage
+    Value: !GetAtt IWCloudWatchAgentNginxLogGroup.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-${AWS::Region}-${IWProductServiceName}-nginx-log-group"
+  IWTomcatLogGroupARN:
+    Description: ARN for futher usage
+    Value: !GetAtt IWCloudWatchAgentTomcatLogGroup.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-${AWS::Region}-${IWProductServiceName}-tomcat-log-group"
